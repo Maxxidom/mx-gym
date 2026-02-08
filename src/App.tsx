@@ -183,6 +183,13 @@ const Icons = {
       <polyline points="12 6 12 12 16 10"/>
     </svg>
   ),
+  download: (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+      <polyline points="7 10 12 15 17 10"/>
+      <line x1="12" y1="15" x2="12" y2="3"/>
+    </svg>
+  ),
 };
 
 type Screen = 'home' | 'workout' | 'exercise' | 'programs' | 'catalog' | 'stats' | 'weight' | 'addExercise' | 'editWorkout';
@@ -243,6 +250,55 @@ export default function App() {
   const [showHistory, setShowHistory] = useState<string | null>(null);
   const [editingWorkoutId, setEditingWorkoutId] = useState<string | null>(null);
   const [addExerciseFilter, setAddExerciseFilter] = useState<ExerciseCategory | 'all'>('all');
+  
+  // PWA Install State
+  const [showInstallBanner, setShowInstallBanner] = useState(false);
+  const [isInstalled, setIsInstalled] = useState(false);
+  
+  // Check if app is installed and listen for install prompt
+  useEffect(() => {
+    // Check if already installed
+    if (window.matchMedia('(display-mode: standalone)').matches) {
+      setIsInstalled(true);
+      return;
+    }
+    
+    // Listen for install prompt
+    const handleInstallable = () => {
+      setShowInstallBanner(true);
+    };
+    
+    const handleInstalled = () => {
+      setShowInstallBanner(false);
+      setIsInstalled(true);
+    };
+    
+    // Check if prompt is already available
+    if ((window as any).deferredPrompt) {
+      setShowInstallBanner(true);
+    }
+    
+    window.addEventListener('pwainstallable', handleInstallable);
+    window.addEventListener('pwainstalled', handleInstalled);
+    
+    return () => {
+      window.removeEventListener('pwainstallable', handleInstallable);
+      window.removeEventListener('pwainstalled', handleInstalled);
+    };
+  }, []);
+  
+  const handleInstallClick = async () => {
+    const deferredPrompt = (window as any).deferredPrompt;
+    if (!deferredPrompt) return;
+    
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    
+    if (outcome === 'accepted') {
+      setShowInstallBanner(false);
+    }
+    (window as any).deferredPrompt = null;
+  };
   
   // Confirm modal state
   const [confirmModal, setConfirmModal] = useState<{
@@ -426,6 +482,38 @@ export default function App() {
         </p>
         <h1 className="text-2xl font-bold mt-1">Тренировка</h1>
       </header>
+      
+      {/* PWA Install Banner */}
+      {showInstallBanner && !isInstalled && (
+        <div className="mx-5 mb-4">
+          <div 
+            className="rounded-2xl p-4 flex items-center gap-4"
+            style={{ background: `linear-gradient(135deg, ${theme.accentDark} 0%, ${theme.accentMuted} 100%)` }}
+          >
+            <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center flex-shrink-0">
+              {Icons.download}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-bold">Установить приложение</p>
+              <p className="text-sm text-indigo-200">Быстрый доступ с главного экрана</p>
+            </div>
+            <div className="flex gap-2 flex-shrink-0">
+              <button
+                onClick={() => setShowInstallBanner(false)}
+                className="w-10 h-10 rounded-lg bg-white/10 flex items-center justify-center"
+              >
+                {Icons.x}
+              </button>
+              <button
+                onClick={handleInstallClick}
+                className="px-4 py-2 bg-white text-indigo-600 font-bold rounded-lg"
+              >
+                Установить
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Active Workout Banner */}
       {activeWorkout && !activeWorkout.completed && (

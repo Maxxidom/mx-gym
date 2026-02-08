@@ -1,24 +1,37 @@
 {
-  "name": "FitTracker - Фитнес Дневник",
+  "name": "FitTracker - Фитнес Трекер",
   "short_name": "FitTracker",
-  "description": "Отслеживание тренировок и веса тела",
+  "description": "Отслеживание тренировок, упражнений и веса",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
+  "orientation": "portrait",
   "background_color": "#0a0a0b",
   "theme_color": "#6366f1",
-  "orientation": "portrait",
+  "categories": ["fitness", "health", "lifestyle"],
+  "lang": "ru",
+  "dir": "ltr",
   "icons": [
     {
-      "src": "/icon-192.png",
-      "sizes": "192x192",
-      "type": "image/png",
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
       "purpose": "any maskable"
+    }
+  ],
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "Начать тренировку",
+      "short_name": "Тренировка",
+      "url": "/?action=workout",
+      "icons": [{"src": "/icon-192.png", "sizes": "192x192"}]
     },
     {
-      "src": "/icon-512.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any maskable"
+      "name": "Добавить вес",
+      "short_name": "Вес",
+      "url": "/?action=weight",
+      "icons": [{"src": "/icon-192.png", "sizes": "192x192"}]
     }
   ]
 }
