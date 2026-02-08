@@ -1214,24 +1214,35 @@ export default function App() {
               >
                 <div className="flex items-center justify-between mb-3">
                   <span className="text-gray-400 font-bold">Подход {index + 1}</span>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center">
                     {activeExercise.sets.length > 1 && (
                       <button
-                        onClick={() => handleDeleteSet(activeExercise.id, set.id)}
-                        className="text-gray-600 active:text-red-500 p-1"
+                        onClick={() => {
+                          showConfirm({
+                            title: 'Удалить подход?',
+                            message: `Подход ${index + 1} будет удалён.`,
+                            confirmText: 'Удалить',
+                            confirmColor: 'red',
+                            onConfirm: () => {
+                              hideConfirm();
+                              handleDeleteSet(activeExercise.id, set.id);
+                            },
+                          });
+                        }}
+                        className="text-gray-600 active:text-red-500 p-2 mr-4"
                       >
                         <span className="scale-75">{Icons.trash}</span>
                       </button>
                     )}
                     <button
                       onClick={() => handleUpdateSet(activeExercise.id, set.id, { completed: !set.completed })}
-                      className="w-10 h-10 rounded-lg flex items-center justify-center transition-all"
+                      className="w-12 h-12 rounded-xl flex items-center justify-center transition-all"
                       style={{
                         backgroundColor: set.completed ? '#10b981' : theme.bg.medium,
                         color: set.completed ? 'white' : 'gray'
                       }}
                     >
-                      {set.completed ? Icons.check : <span className="w-4 h-4 rounded border-2 border-gray-500"></span>}
+                      {set.completed ? Icons.check : <span className="w-5 h-5 rounded border-2 border-gray-500"></span>}
                     </button>
                   </div>
                 </div>
