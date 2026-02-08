@@ -51,6 +51,7 @@ import {
   calculateWorkoutCalories,
   WORKOUT_INTENSITIES,
   WORKOUT_FEELINGS,
+  getTodayCaloriesStats,
 } from './store';
 import { WorkoutIntensity } from './types';
 
@@ -607,6 +608,51 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* Today's Calories Summary */}
+      {(() => {
+        const caloriesStats = getTodayCaloriesStats(data);
+        const hasCalories = caloriesStats.today.total > 0 || caloriesStats.week.total > 0;
+        if (!hasCalories) return null;
+        
+        return (
+          <div className="mx-5 mb-4">
+            <div className="rounded-2xl p-4" style={{ backgroundColor: theme.bg.dark, border: `1px solid ${theme.bg.medium}` }}>
+              <div className="flex items-center gap-3 mb-3">
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-orange-500/20 text-orange-500">
+                  {Icons.fire}
+                </div>
+                <div>
+                  <p className="text-gray-400 text-xs font-medium uppercase">Сожжено калорий</p>
+                  <p className="text-xl font-bold text-orange-500">{caloriesStats.today.total} ккал</p>
+                </div>
+              </div>
+              
+              <div className="flex gap-3">
+                {caloriesStats.today.workout > 0 && (
+                  <div className="flex-1 rounded-xl p-3" style={{ backgroundColor: theme.bg.medium }}>
+                    <p className="text-gray-500 text-xs">Спортзал</p>
+                    <p className="font-bold text-orange-400">{caloriesStats.today.workout} ккал</p>
+                  </div>
+                )}
+                {caloriesStats.today.run > 0 && (
+                  <div className="flex-1 rounded-xl p-3" style={{ backgroundColor: theme.bg.medium }}>
+                    <p className="text-gray-500 text-xs">Бег/Ходьба</p>
+                    <p className="font-bold text-green-400">{caloriesStats.today.run} ккал</p>
+                  </div>
+                )}
+              </div>
+              
+              {caloriesStats.week.total > 0 && (
+                <div className="mt-3 pt-3 flex items-center justify-between text-sm" style={{ borderTop: `1px solid ${theme.bg.medium}` }}>
+                  <span className="text-gray-500">За неделю:</span>
+                  <span className="font-bold text-gray-300">{caloriesStats.week.total} ккал</span>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Active Workout Banner */}
       {activeWorkout && !activeWorkout.completed && (

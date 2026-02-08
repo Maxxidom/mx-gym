@@ -19,21 +19,24 @@ const RUN_MET: Record<string, number> = {
 };
 
 // MET values for strength training based on intensity
+// Эти значения уменьшены, т.к. при силовой тренировке ~30% времени это активная работа
 const WORKOUT_MET: Record<WorkoutIntensity, number> = {
-  light: 3.5,
-  moderate: 5.0,
-  high: 6.0,
-  very_high: 8.0,
+  light: 2.5,    // ~4-5 ккал/мин с учётом отдыха
+  moderate: 3.5, // ~5-6 ккал/мин с учётом отдыха  
+  high: 4.5,     // ~6-8 ккал/мин с учётом отдыха
+  very_high: 6.0, // ~8-10 ккал/мин с учётом отдыха
 };
 
 // Calculate calories: MET × weight(kg) × time(hours)
+// Для более точного расчёта при силовых тренировках применяется коэффициент активности
 export const calculateCalories = (
   met: number,
   weightKg: number,
-  timeSeconds: number
+  timeSeconds: number,
+  activityFactor: number = 1.0 // 0.4 для силовых (40% активное время), 1.0 для кардио
 ): number => {
   const hours = timeSeconds / 3600;
-  return Math.round(met * weightKg * hours);
+  return Math.round(met * weightKg * hours * activityFactor);
 };
 
 // Get user age from birthdate
@@ -62,24 +65,25 @@ export const calculateBMR = (profile: UserProfile, weightKg: number): number => 
   }
 };
 
-// Calculate run calories
+// Calculate run calories (кардио - 100% активное время)
 export const calculateRunCalories = (
   runType: string,
   weightKg: number,
   timeSeconds: number
 ): number => {
   const met = RUN_MET[runType] || 8.0;
-  return calculateCalories(met, weightKg, timeSeconds);
+  return calculateCalories(met, weightKg, timeSeconds, 1.0);
 };
 
-// Calculate workout calories
+// Calculate workout calories (силовые - ~40% активное время из-за отдыха между подходами)
 export const calculateWorkoutCalories = (
   intensity: WorkoutIntensity,
   weightKg: number,
   timeSeconds: number
 ): number => {
   const met = WORKOUT_MET[intensity];
-  return calculateCalories(met, weightKg, timeSeconds);
+  // Коэффициент 0.5 учитывает что ~50% времени тренировки это отдых между подходами
+  return calculateCalories(met, weightKg, timeSeconds, 0.5);
 };
 
 // Helper to create a new exercise with timer fields
@@ -991,6 +995,51 @@ export const RUN_FEELINGS: Record<string, { label: string; emoji: string; color:
 };
 
 export const WORKOUT_FEELINGS = RUN_FEELINGS;
+
+// Get today's calories stats
+export const getTodayCaloriesStats = (data: AppData) => {
+  const today = new Date().toISOString().split('T')[0];
+  
+  // Workout calories today
+  const todayWorkouts = data.workouts.filter(w => 
+    w.completed && w.date === today && w.calories
+  );
+  const workoutCalories = todayWorkouts.reduce((sum, w) => sum + (w.calories || 0), 0);
+  
+  // Run calories today
+  const todayRuns = data.runSessions.filter(r => 
+    r.completed && r.date === today && r.calories
+  );
+  const runCalories = todayRuns.reduce((sum, r) => sum + (r.calories || 0), 0);
+  
+  // Weekly stats
+  const weekAgo = new Date();
+  weekAgo.setDate(weekAgo.getDate() - 7);
+  const weekAgoStr = weekAgo.toISOString().split('T')[0];
+  
+  const weekWorkouts = data.workouts.filter(w => 
+    w.completed && w.date >= weekAgoStr && w.calories
+  );
+  const weekWorkoutCalories = weekWorkouts.reduce((sum, w) => sum + (w.calories || 0), 0);
+  
+  const weekRuns = data.runSessions.filter(r => 
+    r.completed && r.date >= weekAgoStr && r.calories
+  );
+  const weekRunCalories = weekRuns.reduce((sum, r) => sum + (r.calories || 0), 0);
+  
+  return {
+    today: {
+      workout: workoutCalories,
+      run: runCalories,
+      total: workoutCalories + runCalories,
+    },
+    week: {
+      workout: weekWorkoutCalories,
+      run: weekRunCalories,
+      total: weekWorkoutCalories + weekRunCalories,
+    },
+  };
+};
 
 export const WORKOUT_INTENSITIES: Record<WorkoutIntensity, { label: string; emoji: string; color: string }> = {
   light: { label: 'Лёгкая', emoji: '🌱', color: '#22c55e' },
