@@ -19,7 +19,6 @@ import {
   updateSet,
   addSetToExercise,
   deleteSet,
-  completeWorkout,
   deleteWorkout,
   getExerciseHistory,
   getLastWorkoutForExercise,
@@ -45,10 +44,15 @@ import {
   deleteRunSession,
   getRunStats,
   RUN_TYPES,
-  RUN_SURFACES,
   RUN_WEATHER,
   RUN_FEELINGS,
+  updateUserProfile,
+  getCurrentWeight,
+  calculateWorkoutCalories,
+  WORKOUT_INTENSITIES,
+  WORKOUT_FEELINGS,
 } from './store';
+import { WorkoutIntensity } from './types';
 
 // Theme colors - Modern Fitness App palette
 const theme = {
@@ -217,9 +221,26 @@ const Icons = {
       <line x1="4" y1="22" x2="4" y2="15"/>
     </svg>
   ),
+  settings: (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="3"/>
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+    </svg>
+  ),
+  user: (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+      <circle cx="12" cy="7" r="4"/>
+    </svg>
+  ),
+  fire: (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 2c0 4-4 6-4 10a4 4 0 0 0 8 0c0-4-4-6-4-10z"/>
+    </svg>
+  ),
 };
 
-type Screen = 'home' | 'workout' | 'exercise' | 'programs' | 'catalog' | 'stats' | 'weight' | 'addExercise' | 'editWorkout' | 'running' | 'activeRun';
+type Screen = 'home' | 'workout' | 'exercise' | 'programs' | 'catalog' | 'stats' | 'weight' | 'addExercise' | 'editWorkout' | 'running' | 'activeRun' | 'settings' | 'finishWorkout';
 
 // Confirm Modal Component
 interface ConfirmModalProps {
@@ -401,11 +422,47 @@ export default function App() {
     setScreen('workout');
   };
 
+  // Finish workout state
+  const [finishIntensity, setFinishIntensity] = useState<WorkoutIntensity>('moderate');
+  const [finishFeeling, setFinishFeeling] = useState<string>('good');
+  
   const handleFinishWorkout = () => {
     if (activeWorkoutId) {
-      setData(prev => completeWorkout(prev, activeWorkoutId));
+      setScreen('finishWorkout');
+    }
+  };
+  
+  const handleConfirmFinishWorkout = () => {
+    if (activeWorkoutId) {
+      const workout = data.workouts.find(w => w.id === activeWorkoutId);
+      if (workout) {
+        // Calculate total time
+        const totalTime = workout.exercises.reduce((sum, e) => sum + (e.totalTime || 0), 0);
+        // Get current weight
+        const weight = getCurrentWeight(data);
+        // Calculate calories
+        const calories = weight > 0 ? calculateWorkoutCalories(finishIntensity, weight, totalTime) : 0;
+        
+        setData(prev => ({
+          ...prev,
+          workouts: prev.workouts.map(w => 
+            w.id === activeWorkoutId 
+              ? { 
+                  ...w, 
+                  completed: true, 
+                  completedAt: new Date().toISOString(),
+                  intensity: finishIntensity,
+                  feeling: finishFeeling as any,
+                  calories,
+                } 
+              : w
+          ),
+        }));
+      }
       setActiveWorkoutId(null);
       setActiveExerciseId(null);
+      setFinishIntensity('moderate');
+      setFinishFeeling('good');
       setScreen('home');
     }
   };
@@ -507,7 +564,16 @@ export default function App() {
         <p className="text-gray-400 text-sm font-medium">
           {new Date().toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' })}
         </p>
-        <h1 className="text-2xl font-bold mt-1">Тренировка</h1>
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-bold mt-1">Тренировка</h1>
+          <button 
+            onClick={() => setScreen('settings')}
+            className="w-10 h-10 rounded-xl flex items-center justify-center"
+            style={{ backgroundColor: theme.bg.dark, color: 'gray' }}
+          >
+            {Icons.settings}
+          </button>
+        </div>
       </header>
       
       {/* PWA Install Banner */}
@@ -657,6 +723,9 @@ export default function App() {
               .map(workout => {
                 const day = data.trainingDays.find(d => d.id === workout.dayId);
                 const totalSets = workout.exercises.reduce((sum, e) => sum + e.sets.filter(s => s.completed).length, 0);
+                const totalTime = workout.exercises.reduce((sum, e) => sum + (e.totalTime || 0), 0);
+                const intensityInfo = workout.intensity ? WORKOUT_INTENSITIES[workout.intensity] : null;
+                const feelingInfo = workout.feeling ? WORKOUT_FEELINGS[workout.feeling] : null;
                 return (
                   <button
                     key={workout.id}
@@ -664,17 +733,45 @@ export default function App() {
                       setEditingWorkoutId(workout.id);
                       setScreen('editWorkout');
                     }}
-                    className="w-full rounded-xl p-4 text-left active:scale-[0.98] transition-transform"
+                    className="w-full rounded-2xl p-4 text-left active:scale-[0.98] transition-transform"
                     style={{ backgroundColor: theme.bg.dark, border: `1px solid ${theme.bg.medium}` }}
                   >
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="font-semibold">{day?.name || 'Свободная'}</p>
-                        <p className="text-gray-500 text-sm">
-                          {new Date(workout.completedAt!).toLocaleDateString('ru-RU')} • {totalSets} подходов
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="flex-1">
+                        <p className="font-bold text-lg">{day?.name || 'Свободная тренировка'}</p>
+                        <p className="text-gray-500 text-sm mt-0.5">
+                          {new Date(workout.completedAt!).toLocaleDateString('ru-RU', {
+                            weekday: 'short',
+                            day: 'numeric',
+                            month: 'short'
+                          })}
+                          {totalTime > 0 && ` • ${formatTime(totalTime)}`}
                         </p>
                       </div>
-                      <span className="text-gray-600">{Icons.chevronRight}</span>
+                      <div className="flex items-center gap-2">
+                        {feelingInfo && <span className="text-2xl">{feelingInfo.emoji}</span>}
+                        <span className="text-gray-600">{Icons.chevronRight}</span>
+                      </div>
+                    </div>
+                    
+                    {/* Stats row */}
+                    <div className="flex gap-2 flex-wrap">
+                      <span className="px-2.5 py-1.5 rounded-lg text-xs font-medium" style={{ backgroundColor: theme.bg.medium }}>
+                        📊 {totalSets} подходов
+                      </span>
+                      {workout.calories && workout.calories > 0 && (
+                        <span className="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-orange-500/20 text-orange-400">
+                          🔥 {workout.calories} ккал
+                        </span>
+                      )}
+                      {intensityInfo && (
+                        <span 
+                          className="px-2.5 py-1.5 rounded-lg text-xs font-medium"
+                          style={{ backgroundColor: `${intensityInfo.color}30`, color: intensityInfo.color }}
+                        >
+                          {intensityInfo.emoji} {intensityInfo.label}
+                        </span>
+                      )}
                     </div>
                   </button>
                 );
@@ -2463,44 +2560,26 @@ export default function App() {
             </div>
           </div>
           
-          {/* Run Type & Surface selectors */}
-          <div className="mt-8 w-full max-w-sm">
-            <div className="grid grid-cols-2 gap-3 mb-4">
-              <div className="rounded-2xl p-4" style={{ backgroundColor: theme.bg.dark, border: `1px solid ${theme.bg.medium}` }}>
-                <p className="text-gray-500 text-xs font-medium mb-2">Тип пробежки</p>
-                <div className="flex flex-wrap gap-1">
-                  {Object.entries(RUN_TYPES).map(([key, val]) => (
-                    <button
-                      key={key}
-                      onClick={() => setData(prev => updateRunSession(prev, run.id, { runType: key as any }))}
-                      className="px-2 py-1 rounded-lg text-xs font-medium transition-all"
-                      style={{
-                        backgroundColor: run.runType === key ? theme.accent : theme.bg.medium,
-                        color: run.runType === key ? 'white' : 'gray'
-                      }}
-                    >
-                      {val.emoji} {val.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="rounded-2xl p-4" style={{ backgroundColor: theme.bg.dark, border: `1px solid ${theme.bg.medium}` }}>
-                <p className="text-gray-500 text-xs font-medium mb-2">Поверхность</p>
-                <div className="flex flex-wrap gap-1">
-                  {Object.entries(RUN_SURFACES).map(([key, val]) => (
-                    <button
-                      key={key}
-                      onClick={() => setData(prev => updateRunSession(prev, run.id, { surface: key as any }))}
-                      className="px-2 py-1 rounded-lg text-xs font-medium transition-all"
-                      style={{
-                        backgroundColor: run.surface === key ? theme.accent : theme.bg.medium,
-                        color: run.surface === key ? 'white' : 'gray'
-                      }}
-                    >
-                      {val.emoji}
-                    </button>
-                  ))}
-                </div>
+          {/* Run Type selector - Full width */}
+          <div className="mt-8 w-full max-w-md px-4">
+            <div className="rounded-2xl p-5" style={{ backgroundColor: theme.bg.dark, border: `1px solid ${theme.bg.medium}` }}>
+              <p className="text-gray-400 text-sm font-medium mb-4 text-center uppercase tracking-wide">Тип активности</p>
+              <div className="flex gap-3">
+                {Object.entries(RUN_TYPES).map(([key, val]) => (
+                  <button
+                    key={key}
+                    onClick={() => setData(prev => updateRunSession(prev, run.id, { runType: key as any }))}
+                    className="flex-1 py-5 rounded-2xl font-bold text-lg transition-all flex flex-col items-center gap-2"
+                    style={{
+                      backgroundColor: run.runType === key ? theme.accent : theme.bg.medium,
+                      color: run.runType === key ? 'white' : 'gray',
+                      border: run.runType === key ? `2px solid ${theme.accentLight}` : `2px solid transparent`
+                    }}
+                  >
+                    <span className="text-4xl">{val.emoji}</span>
+                    <span className="text-base">{val.label}</span>
+                  </button>
+                ))}
               </div>
             </div>
           </div>
@@ -2792,7 +2871,7 @@ export default function App() {
             <div className="space-y-3">
               {completedRuns.map(run => {
                 const runType = RUN_TYPES[run.runType];
-                const surface = RUN_SURFACES[run.surface];
+                // surface removed
                 const feeling = run.feeling ? RUN_FEELINGS[run.feeling] : null;
                 const weather = run.weather ? RUN_WEATHER[run.weather] : null;
                 
@@ -2835,12 +2914,7 @@ export default function App() {
                       >
                         {runType?.emoji} {runType?.label}
                       </span>
-                      <span 
-                        className="px-2 py-1 rounded-lg text-xs font-medium"
-                        style={{ backgroundColor: theme.bg.medium }}
-                      >
-                        {surface?.emoji} {surface?.label}
-                      </span>
+                      { /* surface removed */ }
                       {weather && (
                         <span 
                           className="px-2 py-1 rounded-lg text-xs font-medium"
@@ -2876,6 +2950,251 @@ export default function App() {
             </div>
           )}
         </section>
+      </div>
+    );
+  };
+
+  // Settings Screen
+  const renderSettings = () => {
+    const profile = data.userProfile;
+    const currentWeight = getCurrentWeight(data);
+    
+    return (
+      <div className="min-h-screen text-white pb-28" style={{ backgroundColor: theme.bg.darkest }}>
+        <header className="px-5 pt-4 pb-4">
+          <div className="flex items-center gap-4">
+            <button 
+              onClick={() => setScreen('home')}
+              className="font-semibold flex items-center"
+              style={{ color: theme.accent }}
+            >
+              {Icons.chevronLeft}
+            </button>
+            <h1 className="text-2xl font-bold">Настройки</h1>
+          </div>
+        </header>
+
+        <div className="px-5 space-y-6">
+          {/* Profile Section */}
+          <div className="rounded-2xl p-5" style={{ backgroundColor: theme.bg.dark, border: `1px solid ${theme.bg.medium}` }}>
+            <div className="flex items-center gap-4 mb-6">
+              <div className="w-16 h-16 rounded-full flex items-center justify-center" style={{ backgroundColor: theme.accent }}>
+                {Icons.user}
+              </div>
+              <div className="flex-1">
+                <p className="text-gray-400 text-sm">Профиль</p>
+                <p className="font-bold text-lg">{profile.name || 'Не указано'}</p>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="text-gray-400 text-sm font-medium block mb-2">Имя</label>
+                <input
+                  type="text"
+                  value={profile.name}
+                  onChange={(e) => setData(prev => updateUserProfile(prev, { name: e.target.value }))}
+                  placeholder="Ваше имя"
+                  className="w-full rounded-xl px-4 py-3 outline-none"
+                  style={{ backgroundColor: theme.bg.medium, border: `1px solid ${theme.bg.light}` }}
+                />
+              </div>
+
+              <div>
+                <label className="text-gray-400 text-sm font-medium block mb-2">Пол</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { id: 'male', label: 'Мужской' },
+                    { id: 'female', label: 'Женский' },
+                  ].map(g => (
+                    <button
+                      key={g.id}
+                      onClick={() => setData(prev => updateUserProfile(prev, { gender: g.id as any }))}
+                      className="py-3 rounded-xl font-semibold transition-all"
+                      style={{
+                        backgroundColor: profile.gender === g.id ? theme.accent : theme.bg.medium,
+                        color: profile.gender === g.id ? 'white' : 'gray'
+                      }}
+                    >
+                      {g.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="text-gray-400 text-sm font-medium block mb-2">Дата рождения</label>
+                <input
+                  type="date"
+                  value={profile.birthDate}
+                  onChange={(e) => setData(prev => updateUserProfile(prev, { birthDate: e.target.value }))}
+                  className="w-full rounded-xl px-4 py-3 outline-none"
+                  style={{ backgroundColor: theme.bg.medium, border: `1px solid ${theme.bg.light}` }}
+                />
+              </div>
+
+              <div>
+                <label className="text-gray-400 text-sm font-medium block mb-2">Рост (см)</label>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  value={profile.height || ''}
+                  onChange={(e) => setData(prev => updateUserProfile(prev, { height: parseInt(e.target.value) || 0 }))}
+                  placeholder="170"
+                  className="w-full rounded-xl px-4 py-3 outline-none"
+                  style={{ backgroundColor: theme.bg.medium, border: `1px solid ${theme.bg.light}` }}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Current Stats */}
+          {currentWeight > 0 && (
+            <div className="rounded-2xl p-5" style={{ backgroundColor: theme.bg.dark, border: `1px solid ${theme.bg.medium}` }}>
+              <h3 className="font-bold mb-4">Текущие показатели</h3>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="rounded-xl p-4 text-center" style={{ backgroundColor: theme.bg.medium }}>
+                  <p className="text-gray-500 text-xs">Вес</p>
+                  <p className="text-2xl font-bold" style={{ color: theme.accentLight }}>{currentWeight} кг</p>
+                </div>
+                <div className="rounded-xl p-4 text-center" style={{ backgroundColor: theme.bg.medium }}>
+                  <p className="text-gray-500 text-xs">Рост</p>
+                  <p className="text-2xl font-bold" style={{ color: theme.accentLight }}>{profile.height || '—'} см</p>
+                </div>
+              </div>
+              
+              {profile.height > 0 && currentWeight > 0 && (
+                <div className="mt-3 rounded-xl p-4 text-center" style={{ backgroundColor: theme.bg.medium }}>
+                  <p className="text-gray-500 text-xs">ИМТ (Индекс массы тела)</p>
+                  <p className="text-2xl font-bold" style={{ color: theme.accentLight }}>
+                    {(currentWeight / ((profile.height / 100) ** 2)).toFixed(1)}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* About */}
+          <div className="rounded-2xl p-5" style={{ backgroundColor: theme.bg.dark, border: `1px solid ${theme.bg.medium}` }}>
+            <h3 className="font-bold mb-2">О приложении</h3>
+            <p className="text-gray-500 text-sm">GymTracker v1.0</p>
+            <p className="text-gray-500 text-sm">Ваш личный дневник тренировок</p>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // Finish Workout Screen
+  const renderFinishWorkout = () => {
+    if (!activeWorkout) return null;
+    
+    // Calculate workout stats
+    const totalTime = activeWorkout.exercises.reduce((sum, e) => sum + (e.totalTime || 0), 0);
+    const completedExercises = activeWorkout.exercises.filter(e => e.completed).length;
+    const totalSets = activeWorkout.exercises.reduce((sum, e) => sum + e.sets.filter(s => s.completed).length, 0);
+    const currentWeight = getCurrentWeight(data);
+    const estimatedCalories = currentWeight > 0 ? calculateWorkoutCalories(finishIntensity, currentWeight, totalTime) : 0;
+    
+    return (
+      <div className="fixed inset-0 text-white z-50 overflow-auto" style={{ backgroundColor: theme.bg.darkest }}>
+        <header className="sticky top-0 px-5 pt-4 pb-3 z-10" style={{ backgroundColor: theme.bg.darkest, borderBottom: `1px solid ${theme.bg.medium}` }}>
+          <div className="flex items-center justify-between">
+            <button 
+              onClick={() => setScreen('workout')}
+              className="font-semibold flex items-center"
+              style={{ color: theme.accent }}
+            >
+              {Icons.chevronLeft} Назад
+            </button>
+            <h1 className="text-lg font-bold">Завершить тренировку</h1>
+            <div className="w-16" />
+          </div>
+        </header>
+
+        <div className="px-5 py-4">
+          {/* Summary */}
+          <div className="rounded-2xl p-5 mb-4" style={{ background: `linear-gradient(135deg, ${theme.accent} 0%, ${theme.accentDark} 100%)` }}>
+            <h3 className="text-indigo-200 text-sm font-medium mb-2">Отличная работа!</h3>
+            <div className="grid grid-cols-3 gap-4">
+              <div className="text-center">
+                <p className="text-3xl font-bold">{completedExercises}</p>
+                <p className="text-indigo-200 text-xs">упражнений</p>
+              </div>
+              <div className="text-center">
+                <p className="text-3xl font-bold">{totalSets}</p>
+                <p className="text-indigo-200 text-xs">подходов</p>
+              </div>
+              <div className="text-center">
+                <p className="text-3xl font-bold">{formatTime(totalTime)}</p>
+                <p className="text-indigo-200 text-xs">время</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Estimated Calories */}
+          {estimatedCalories > 0 && (
+            <div className="rounded-2xl p-4 mb-4 flex items-center gap-4" style={{ backgroundColor: theme.bg.dark, border: `1px solid ${theme.bg.medium}` }}>
+              <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-orange-500/20 text-orange-500">
+                {Icons.fire}
+              </div>
+              <div>
+                <p className="text-gray-400 text-sm">Примерно сожжено</p>
+                <p className="text-xl font-bold text-orange-500">{estimatedCalories} ккал</p>
+              </div>
+            </div>
+          )}
+
+          {/* Intensity */}
+          <div className="rounded-2xl p-4 mb-4" style={{ backgroundColor: theme.bg.dark, border: `1px solid ${theme.bg.medium}` }}>
+            <label className="text-gray-400 text-sm font-medium block mb-3">Интенсивность тренировки</label>
+            <div className="grid grid-cols-2 gap-2">
+              {Object.entries(WORKOUT_INTENSITIES).map(([key, val]) => (
+                <button
+                  key={key}
+                  onClick={() => setFinishIntensity(key as WorkoutIntensity)}
+                  className="py-3 rounded-xl font-semibold transition-all flex items-center justify-center gap-2"
+                  style={{
+                    backgroundColor: finishIntensity === key ? val.color : theme.bg.medium,
+                    color: finishIntensity === key ? 'white' : 'gray'
+                  }}
+                >
+                  <span className="text-lg">{val.emoji}</span>
+                  <span className="text-sm">{val.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Feeling */}
+          <div className="rounded-2xl p-4 mb-6" style={{ backgroundColor: theme.bg.dark, border: `1px solid ${theme.bg.medium}` }}>
+            <label className="text-gray-400 text-sm font-medium block mb-3">Как вы себя чувствуете?</label>
+            <div className="flex justify-between gap-2">
+              {Object.entries(WORKOUT_FEELINGS).map(([key, val]) => (
+                <button
+                  key={key}
+                  onClick={() => setFinishFeeling(key)}
+                  className="flex-1 py-2 rounded-xl flex flex-col items-center gap-1 transition-all"
+                  style={{
+                    backgroundColor: finishFeeling === key ? val.color : theme.bg.medium,
+                    transform: finishFeeling === key ? 'scale(1.05)' : 'scale(1)'
+                  }}
+                >
+                  <span className="text-xl">{val.emoji}</span>
+                  <span className="text-[10px] font-medium text-white">{val.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Bottom Button */}
+          <button
+            onClick={handleConfirmFinishWorkout}
+            className="w-full py-5 rounded-2xl font-bold text-xl bg-green-600 active:bg-green-500 flex items-center justify-center gap-3 shadow-lg mb-8"
+          >
+            {Icons.check} Завершить тренировку
+          </button>
+        </div>
       </div>
     );
   };
@@ -2997,6 +3316,8 @@ export default function App() {
       {screen === 'weight' && renderWeight()}
       {screen === 'running' && renderRunning()}
       {screen === 'activeRun' && renderActiveRun()}
+      {screen === 'settings' && renderSettings()}
+      {screen === 'finishWorkout' && renderFinishWorkout()}
       {screen === 'stats' && renderStats()}
       
       {renderHistory()}

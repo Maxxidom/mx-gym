@@ -39,6 +39,10 @@ export interface Workout {
   completed: boolean;
   startedAt: string;
   completedAt?: string;
+  // New fields
+  intensity?: WorkoutIntensity;
+  feeling?: WorkoutFeeling;
+  calories?: number;
 }
 
 export interface TrainingDay {
@@ -55,9 +59,21 @@ export interface BodyWeightEntry {
   createdAt: string;
 }
 
-// Running types
-export type RunType = 'easy' | 'tempo' | 'intervals' | 'long' | 'recovery' | 'race';
-export type RunSurface = 'asphalt' | 'trail' | 'track' | 'treadmill' | 'grass';
+// User profile
+export interface UserProfile {
+  name: string;
+  gender: 'male' | 'female' | '';
+  birthDate: string;
+  height: number; // cm
+}
+
+// Intensity & Feeling for workouts
+export type WorkoutIntensity = 'light' | 'moderate' | 'high' | 'very_high';
+export type WorkoutFeeling = 'great' | 'good' | 'okay' | 'tired' | 'exhausted';
+
+// Running types - simplified to walking/running
+export type RunType = 'walking' | 'running';
+export type RunSurface = string; // Removed, kept for backwards compatibility
 export type RunWeather = 'sunny' | 'cloudy' | 'rainy' | 'snowy' | 'windy' | 'hot' | 'cold';
 export type RunFeeling = 'great' | 'good' | 'okay' | 'tired' | 'exhausted';
 export type RunTimerStatus = 'idle' | 'running' | 'paused' | 'completed';
@@ -87,10 +103,37 @@ export interface RunSession {
   completedAt?: string;
 }
 
+export interface RunSession {
+  id: string;
+  date: string;
+  // Time
+  timerStatus: RunTimerStatus;
+  totalTime: number; // seconds (excluding pauses)
+  startedAt?: string;
+  segments: { start: string; end: string }[];
+  // Distance & pace
+  distance: number; // km
+  // Details
+  runType: RunType;
+  surface: RunSurface;
+  weather?: RunWeather;
+  effort: number; // 1-10
+  feeling?: RunFeeling;
+  notes?: string;
+  // Calculated
+  pace?: number; // seconds per km
+  speed?: number; // km/h
+  calories?: number;
+  // Completion
+  completed: boolean;
+  completedAt?: string;
+}
+
 export interface AppData {
   templates: ExerciseTemplate[];
   trainingDays: TrainingDay[];
   workouts: Workout[];
   bodyWeight: BodyWeightEntry[];
   runSessions: RunSession[];
+  userProfile: UserProfile;
 }

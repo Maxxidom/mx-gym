@@ -1,8 +1,86 @@
-import { AppData, ExerciseTemplate, TrainingDay, Workout, WorkoutExercise, WorkoutSet, RunSession } from './types';
+import { AppData, ExerciseTemplate, TrainingDay, Workout, WorkoutExercise, WorkoutSet, RunSession, UserProfile, WorkoutIntensity } from './types';
 
 const STORAGE_KEY = 'gym_app_data';
 
 const generateId = () => Math.random().toString(36).substr(2, 9);
+
+// Default user profile
+const defaultUserProfile: UserProfile = {
+  name: '',
+  gender: '',
+  birthDate: '',
+  height: 0,
+};
+
+// MET values for running based on type
+const RUN_MET: Record<string, number> = {
+  walking: 4.0,
+  running: 10.0,
+};
+
+// MET values for strength training based on intensity
+const WORKOUT_MET: Record<WorkoutIntensity, number> = {
+  light: 3.5,
+  moderate: 5.0,
+  high: 6.0,
+  very_high: 8.0,
+};
+
+// Calculate calories: MET × weight(kg) × time(hours)
+export const calculateCalories = (
+  met: number,
+  weightKg: number,
+  timeSeconds: number
+): number => {
+  const hours = timeSeconds / 3600;
+  return Math.round(met * weightKg * hours);
+};
+
+// Get user age from birthdate
+export const getUserAge = (birthDate: string): number => {
+  if (!birthDate) return 0;
+  const birth = new Date(birthDate);
+  const now = new Date();
+  let age = now.getFullYear() - birth.getFullYear();
+  const monthDiff = now.getMonth() - birth.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && now.getDate() < birth.getDate())) {
+    age--;
+  }
+  return age;
+};
+
+// Calculate BMR using Mifflin-St Jeor formula
+export const calculateBMR = (profile: UserProfile, weightKg: number): number => {
+  if (!profile.gender || !profile.height || !weightKg || !profile.birthDate) return 0;
+  const age = getUserAge(profile.birthDate);
+  if (age <= 0) return 0;
+  
+  if (profile.gender === 'male') {
+    return Math.round(10 * weightKg + 6.25 * profile.height - 5 * age + 5);
+  } else {
+    return Math.round(10 * weightKg + 6.25 * profile.height - 5 * age - 161);
+  }
+};
+
+// Calculate run calories
+export const calculateRunCalories = (
+  runType: string,
+  weightKg: number,
+  timeSeconds: number
+): number => {
+  const met = RUN_MET[runType] || 8.0;
+  return calculateCalories(met, weightKg, timeSeconds);
+};
+
+// Calculate workout calories
+export const calculateWorkoutCalories = (
+  intensity: WorkoutIntensity,
+  weightKg: number,
+  timeSeconds: number
+): number => {
+  const met = WORKOUT_MET[intensity];
+  return calculateCalories(met, weightKg, timeSeconds);
+};
 
 // Helper to create a new exercise with timer fields
 const createWorkoutExercise = (
@@ -177,8 +255,8 @@ const createDemoData = (): AppData => {
       totalTime: 1800, // 30 минут
       segments: [],
       distance: 5.2,
-      runType: 'easy',
-      surface: 'asphalt',
+      runType: 'running',
+      surface: '',
       weather: 'sunny',
       effort: 5,
       feeling: 'good',
@@ -195,8 +273,8 @@ const createDemoData = (): AppData => {
       totalTime: 2700, // 45 минут
       segments: [],
       distance: 7.5,
-      runType: 'tempo',
-      surface: 'asphalt',
+      runType: 'running',
+      surface: '',
       weather: 'cloudy',
       effort: 7,
       feeling: 'okay',
@@ -213,8 +291,8 @@ const createDemoData = (): AppData => {
       totalTime: 3600, // 60 минут
       segments: [],
       distance: 10.0,
-      runType: 'long',
-      surface: 'trail',
+      runType: 'running',
+      surface: '',
       weather: 'sunny',
       effort: 6,
       feeling: 'great',
@@ -228,23 +306,23 @@ const createDemoData = (): AppData => {
       id: 'r4',
       date: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
       timerStatus: 'completed',
-      totalTime: 1500, // 25 минут
+      totalTime: 2400, // 40 минут
       segments: [],
-      distance: 4.5,
-      runType: 'recovery',
-      surface: 'treadmill',
+      distance: 3.2,
+      runType: 'walking',
+      surface: '',
       weather: undefined,
       effort: 3,
       feeling: 'good',
-      notes: 'Восстановительная пробежка на дорожке',
-      pace: 333,
-      speed: 10.8,
+      notes: 'Вечерняя прогулка',
+      pace: 750,
+      speed: 4.8,
       completed: true,
       completedAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
     },
   ];
 
-  return { templates, trainingDays, workouts, bodyWeight, runSessions };
+  return { templates, trainingDays, workouts, bodyWeight, runSessions, userProfile: defaultUserProfile };
 };
 
 // Migrate old exercise data to include timer fields
@@ -266,6 +344,9 @@ export const loadData = (): AppData => {
       }
       if (!data.runSessions) {
         data.runSessions = [];
+      }
+      if (!data.userProfile) {
+        data.userProfile = defaultUserProfile;
       }
       // Migrate workouts to include timer fields
       data.workouts = data.workouts.map((w: any) => ({
@@ -740,8 +821,8 @@ export const startRunSession = (data: AppData): AppData => {
     startedAt: now,
     segments: [],
     distance: 0,
-    runType: 'easy',
-    surface: 'asphalt',
+    runType: 'running',
+    surface: '',
     effort: 5,
     completed: false,
   };
@@ -885,21 +966,11 @@ export const getRunStats = (data: AppData) => {
 };
 
 export const RUN_TYPES: Record<string, { label: string; emoji: string }> = {
-  easy: { label: 'Лёгкий', emoji: '🚶' },
-  tempo: { label: 'Темповый', emoji: '🏃' },
-  intervals: { label: 'Интервалы', emoji: '⚡' },
-  long: { label: 'Длинный', emoji: '🛤️' },
-  recovery: { label: 'Восстановление', emoji: '💆' },
-  race: { label: 'Соревнование', emoji: '🏆' },
+  walking: { label: 'Ходьба', emoji: '🚶' },
+  running: { label: 'Бег', emoji: '🏃' },
 };
 
-export const RUN_SURFACES: Record<string, { label: string; emoji: string }> = {
-  asphalt: { label: 'Асфальт', emoji: '🛣️' },
-  trail: { label: 'Тропа', emoji: '🌲' },
-  track: { label: 'Стадион', emoji: '🏟️' },
-  treadmill: { label: 'Дорожка', emoji: '🏠' },
-  grass: { label: 'Трава', emoji: '🌿' },
-};
+export const RUN_SURFACES: Record<string, { label: string; emoji: string }> = {};
 
 export const RUN_WEATHER: Record<string, { label: string; emoji: string }> = {
   sunny: { label: 'Солнечно', emoji: '☀️' },
@@ -917,4 +988,114 @@ export const RUN_FEELINGS: Record<string, { label: string; emoji: string; color:
   okay: { label: 'Нормально', emoji: '😐', color: '#eab308' },
   tired: { label: 'Устал', emoji: '😓', color: '#f97316' },
   exhausted: { label: 'Измотан', emoji: '😵', color: '#ef4444' },
+};
+
+export const WORKOUT_FEELINGS = RUN_FEELINGS;
+
+export const WORKOUT_INTENSITIES: Record<WorkoutIntensity, { label: string; emoji: string; color: string }> = {
+  light: { label: 'Лёгкая', emoji: '🌱', color: '#22c55e' },
+  moderate: { label: 'Средняя', emoji: '💪', color: '#3b82f6' },
+  high: { label: 'Высокая', emoji: '🔥', color: '#f97316' },
+  very_high: { label: 'Максимум', emoji: '⚡', color: '#ef4444' },
+};
+
+// User profile functions
+export const updateUserProfile = (data: AppData, updates: Partial<UserProfile>): AppData => {
+  return {
+    ...data,
+    userProfile: { ...data.userProfile, ...updates },
+  };
+};
+
+// Get current weight from bodyWeight entries
+export const getCurrentWeight = (data: AppData): number => {
+  if (data.bodyWeight.length === 0) return 0;
+  const sorted = [...data.bodyWeight].sort((a, b) => 
+    new Date(b.date).getTime() - new Date(a.date).getTime()
+  );
+  return sorted[0].weight;
+};
+
+// Complete workout with intensity, feeling, and calories
+export const completeWorkoutWithDetails = (
+  data: AppData,
+  workoutId: string,
+  intensity: WorkoutIntensity,
+  feeling: string
+): AppData => {
+  const workout = data.workouts.find(w => w.id === workoutId);
+  if (!workout) return data;
+  
+  // Calculate total workout time
+  const totalTime = workout.exercises.reduce((sum, e) => sum + (e.totalTime || 0), 0);
+  
+  // Get current weight
+  const weight = getCurrentWeight(data);
+  
+  // Calculate calories
+  const calories = weight > 0 ? calculateWorkoutCalories(intensity, weight, totalTime) : 0;
+  
+  return {
+    ...data,
+    workouts: data.workouts.map(w => {
+      if (w.id !== workoutId) return w;
+      return {
+        ...w,
+        completed: true,
+        completedAt: new Date().toISOString(),
+        intensity,
+        feeling: feeling as any,
+        calories,
+      };
+    }),
+  };
+};
+
+// Complete run with calories calculation
+export const completeRunWithCalories = (
+  data: AppData,
+  runId: string,
+  distance: number,
+  feeling?: string
+): AppData => {
+  const run = data.runSessions.find(r => r.id === runId);
+  if (!run) return data;
+  
+  let finalTime = run.totalTime;
+  const segments = [...run.segments];
+  
+  // If timer is running, add current segment
+  if (run.timerStatus === 'running' && run.startedAt) {
+    const now = new Date();
+    const startTime = new Date(run.startedAt);
+    finalTime += Math.floor((now.getTime() - startTime.getTime()) / 1000);
+    segments.push({ start: run.startedAt, end: now.toISOString() });
+  }
+  
+  const { pace, speed } = calculateRunStats(finalTime, distance);
+  
+  // Get current weight and calculate calories
+  const weight = getCurrentWeight(data);
+  const calories = weight > 0 ? calculateRunCalories(run.runType, weight, finalTime) : 0;
+  
+  return {
+    ...data,
+    runSessions: data.runSessions.map(r => {
+      if (r.id !== runId) return r;
+      return {
+        ...r,
+        timerStatus: 'completed',
+        totalTime: finalTime,
+        startedAt: undefined,
+        segments,
+        distance,
+        pace,
+        speed,
+        calories,
+        feeling: feeling as any,
+        completed: true,
+        completedAt: new Date().toISOString(),
+      };
+    }),
+  };
 };
