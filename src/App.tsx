@@ -49,6 +49,8 @@ import {
   updateUserProfile,
   getCurrentWeight,
   calculateWorkoutCalories,
+  calculateRunCalories,
+  estimateSteps,
   WORKOUT_INTENSITIES,
   WORKOUT_FEELINGS,
   getTodayCaloriesStats,
@@ -2482,6 +2484,8 @@ export default function App() {
   // Running Screen
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
   const [finishRunDistance, setFinishRunDistance] = useState('');
+  const [finishRunCalories, setFinishRunCalories] = useState('');
+  const [finishRunSteps, setFinishRunSteps] = useState('');
   const [showFinishRunModal, setShowFinishRunModal] = useState(false);
   
   const activeRun = data.runSessions.find(r => r.id === activeRunId);
@@ -2519,10 +2523,18 @@ export default function App() {
   
   const handleFinishRun = () => {
     if (!activeRunId) return;
+    const run = data.runSessions.find(r => r.id === activeRunId);
+    if (!run) return;
+    
     const distance = parseFloat(finishRunDistance) || 0;
-    setData(prev => completeRunSession(prev, activeRunId, distance));
+    const customCalories = finishRunCalories ? parseInt(finishRunCalories) : undefined;
+    const customSteps = finishRunSteps ? parseInt(finishRunSteps) : undefined;
+    
+    setData(prev => completeRunSession(prev, activeRunId, distance, customCalories, customSteps));
     setActiveRunId(null);
     setFinishRunDistance('');
+    setFinishRunCalories('');
+    setFinishRunSteps('');
     setShowFinishRunModal(false);
     setScreen('running');
   };
@@ -2688,126 +2700,217 @@ export default function App() {
         </div>
         
         {/* Finish Run Modal */}
-        {showFinishRunModal && (
-          <div className="fixed inset-0 bg-black/80 z-[60] flex items-end justify-center">
-            <div 
-              className="w-full max-w-lg rounded-t-3xl p-6 animate-slide-up"
-              style={{ backgroundColor: theme.bg.dark }}
-            >
-              <h3 className="text-xl font-bold text-center mb-6">Завершить пробежку</h3>
-              
-              <div className="mb-6">
-                <label className="text-gray-400 text-sm font-medium block mb-2 text-center">Дистанция (км)</label>
-                <div className="flex items-center rounded-2xl" style={{ backgroundColor: theme.bg.medium }}>
-                  <button
-                    onClick={() => setFinishRunDistance(prev => {
-                      const val = parseFloat(prev) || 0;
-                      return Math.max(0, val - 0.1).toFixed(1);
-                    })}
-                    className="w-16 h-16 flex items-center justify-center rounded-l-2xl"
-                    style={{ color: theme.accent }}
-                  >
-                    {Icons.minus}
-                  </button>
-                  <div className="flex-1 flex justify-center">
-                    <input
-                      type="number"
-                      inputMode="decimal"
-                      step="0.1"
-                      value={finishRunDistance}
-                      onChange={(e) => setFinishRunDistance(e.target.value)}
-                      placeholder="0.0"
-                      className="w-24 bg-transparent text-3xl font-bold outline-none"
-                      style={{ textAlign: 'center' }}
-                    />
+        {showFinishRunModal && (() => {
+          // Calculate estimated values for display
+          const currentWeight = getCurrentWeight(data);
+          const currentTime = getCurrentRunTime(run);
+          const distance = parseFloat(finishRunDistance) || 0;
+          const estimatedCalories = currentWeight > 0 ? calculateRunCalories(run.runType, currentWeight, currentTime) : 0;
+          const estimatedSteps = estimateSteps(distance, run.runType);
+          
+          return (
+            <div className="fixed inset-0 bg-black/80 z-[60] flex items-end justify-center">
+              <div 
+                className="w-full max-w-lg rounded-t-3xl p-5 animate-slide-up overflow-auto max-h-[90vh]"
+                style={{ backgroundColor: theme.bg.dark }}
+              >
+                <h3 className="text-xl font-bold text-center mb-4">Завершить</h3>
+                
+                {/* Distance */}
+                <div className="mb-4">
+                  <label className="text-gray-400 text-sm font-medium block mb-2 text-center">Дистанция (км)</label>
+                  <div className="flex items-center rounded-2xl" style={{ backgroundColor: theme.bg.medium }}>
+                    <button
+                      onClick={() => setFinishRunDistance(prev => {
+                        const val = parseFloat(prev) || 0;
+                        return Math.max(0, val - 0.1).toFixed(1);
+                      })}
+                      className="w-14 h-14 flex items-center justify-center rounded-l-2xl"
+                      style={{ color: theme.accent }}
+                    >
+                      {Icons.minus}
+                    </button>
+                    <div className="flex-1 flex justify-center">
+                      <input
+                        type="number"
+                        inputMode="decimal"
+                        step="0.1"
+                        value={finishRunDistance}
+                        onChange={(e) => setFinishRunDistance(e.target.value)}
+                        placeholder="0.0"
+                        className="w-20 bg-transparent text-2xl font-bold outline-none"
+                        style={{ textAlign: 'center' }}
+                      />
+                    </div>
+                    <button
+                      onClick={() => setFinishRunDistance(prev => {
+                        const val = parseFloat(prev) || 0;
+                        return (val + 0.1).toFixed(1);
+                      })}
+                      className="w-14 h-14 flex items-center justify-center rounded-r-2xl"
+                      style={{ color: theme.accent }}
+                    >
+                      {Icons.plus}
+                    </button>
                   </div>
+                </div>
+                
+                {/* Calories & Steps row */}
+                <div className="grid grid-cols-2 gap-3 mb-4">
+                  {/* Calories */}
+                  <div>
+                    <label className="text-gray-400 text-xs font-medium block mb-1 text-center">Калории (ккал)</label>
+                    <div className="flex items-center rounded-xl" style={{ backgroundColor: theme.bg.medium }}>
+                      <button
+                        onClick={() => setFinishRunCalories(prev => {
+                          const val = parseInt(prev) || estimatedCalories;
+                          return Math.max(0, val - 10).toString();
+                        })}
+                        className="w-10 h-12 flex items-center justify-center rounded-l-xl text-orange-400"
+                      >
+                        {Icons.minus}
+                      </button>
+                      <div className="flex-1 flex justify-center">
+                        <input
+                          type="number"
+                          inputMode="numeric"
+                          value={finishRunCalories}
+                          onChange={(e) => setFinishRunCalories(e.target.value)}
+                          placeholder={estimatedCalories.toString()}
+                          className="w-16 bg-transparent text-lg font-bold outline-none text-orange-400"
+                          style={{ textAlign: 'center' }}
+                        />
+                      </div>
+                      <button
+                        onClick={() => setFinishRunCalories(prev => {
+                          const val = parseInt(prev) || estimatedCalories;
+                          return (val + 10).toString();
+                        })}
+                        className="w-10 h-12 flex items-center justify-center rounded-r-xl text-orange-400"
+                      >
+                        {Icons.plus}
+                      </button>
+                    </div>
+                  </div>
+                  
+                  {/* Steps */}
+                  <div>
+                    <label className="text-gray-400 text-xs font-medium block mb-1 text-center">Шаги</label>
+                    <div className="flex items-center rounded-xl" style={{ backgroundColor: theme.bg.medium }}>
+                      <button
+                        onClick={() => setFinishRunSteps(prev => {
+                          const val = parseInt(prev) || estimatedSteps;
+                          return Math.max(0, val - 100).toString();
+                        })}
+                        className="w-10 h-12 flex items-center justify-center rounded-l-xl"
+                        style={{ color: theme.accent }}
+                      >
+                        {Icons.minus}
+                      </button>
+                      <div className="flex-1 flex justify-center">
+                        <input
+                          type="number"
+                          inputMode="numeric"
+                          value={finishRunSteps}
+                          onChange={(e) => setFinishRunSteps(e.target.value)}
+                          placeholder={estimatedSteps.toString()}
+                          className="w-16 bg-transparent text-lg font-bold outline-none"
+                          style={{ textAlign: 'center', color: theme.accentLight }}
+                        />
+                      </div>
+                      <button
+                        onClick={() => setFinishRunSteps(prev => {
+                          const val = parseInt(prev) || estimatedSteps;
+                          return (val + 100).toString();
+                        })}
+                        className="w-10 h-12 flex items-center justify-center rounded-r-xl"
+                        style={{ color: theme.accent }}
+                      >
+                        {Icons.plus}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Effort */}
+                <div className="mb-4">
+                  <label className="text-gray-400 text-xs font-medium block mb-1 text-center">
+                    Усилие: {run.effort}/10
+                  </label>
+                  <input
+                    type="range"
+                    min="1"
+                    max="10"
+                    value={run.effort}
+                    onChange={(e) => setData(prev => updateRunSession(prev, run.id, { effort: parseInt(e.target.value) }))}
+                    className="w-full h-2 rounded-full appearance-none cursor-pointer"
+                    style={{ background: `linear-gradient(90deg, ${theme.accent} ${run.effort * 10}%, ${theme.bg.medium} ${run.effort * 10}%)` }}
+                  />
+                </div>
+                
+                {/* Feeling */}
+                <div className="mb-4">
+                  <label className="text-gray-400 text-xs font-medium block mb-1 text-center">Самочувствие</label>
+                  <div className="flex justify-center gap-2">
+                    {Object.entries(RUN_FEELINGS).map(([key, val]) => (
+                      <button
+                        key={key}
+                        onClick={() => setData(prev => updateRunSession(prev, run.id, { feeling: key as any }))}
+                        className="w-11 h-11 rounded-xl flex items-center justify-center text-xl transition-all"
+                        style={{
+                          backgroundColor: run.feeling === key ? val.color : theme.bg.medium,
+                          transform: run.feeling === key ? 'scale(1.1)' : 'scale(1)'
+                        }}
+                      >
+                        {val.emoji}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                
+                {/* Weather */}
+                <div className="mb-4">
+                  <label className="text-gray-400 text-xs font-medium block mb-1 text-center">Погода</label>
+                  <div className="flex justify-center gap-1.5 flex-wrap">
+                    {Object.entries(RUN_WEATHER).map(([key, val]) => (
+                      <button
+                        key={key}
+                        onClick={() => setData(prev => updateRunSession(prev, run.id, { weather: key as any }))}
+                        className="px-2 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1"
+                        style={{
+                          backgroundColor: run.weather === key ? theme.accent : theme.bg.medium,
+                          color: run.weather === key ? 'white' : 'gray'
+                        }}
+                      >
+                        {val.emoji}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                
+                <div className="flex gap-3 pt-2">
                   <button
-                    onClick={() => setFinishRunDistance(prev => {
-                      const val = parseFloat(prev) || 0;
-                      return (val + 0.1).toFixed(1);
-                    })}
-                    className="w-16 h-16 flex items-center justify-center rounded-r-2xl"
-                    style={{ color: theme.accent }}
+                    onClick={() => {
+                      setShowFinishRunModal(false);
+                      setFinishRunCalories('');
+                      setFinishRunSteps('');
+                    }}
+                    className="flex-1 py-4 rounded-xl font-bold"
+                    style={{ backgroundColor: theme.bg.medium }}
                   >
-                    {Icons.plus}
+                    Отмена
+                  </button>
+                  <button
+                    onClick={handleFinishRun}
+                    className="flex-1 py-4 rounded-xl font-bold bg-green-600 flex items-center justify-center gap-2"
+                  >
+                    {Icons.check} Сохранить
                   </button>
                 </div>
-              </div>
-              
-              {/* Effort */}
-              <div className="mb-6">
-                <label className="text-gray-400 text-sm font-medium block mb-2 text-center">
-                  Уровень усилия: {run.effort}/10
-                </label>
-                <input
-                  type="range"
-                  min="1"
-                  max="10"
-                  value={run.effort}
-                  onChange={(e) => setData(prev => updateRunSession(prev, run.id, { effort: parseInt(e.target.value) }))}
-                  className="w-full h-2 rounded-full appearance-none cursor-pointer"
-                  style={{ background: `linear-gradient(90deg, ${theme.accent} ${run.effort * 10}%, ${theme.bg.medium} ${run.effort * 10}%)` }}
-                />
-              </div>
-              
-              {/* Feeling */}
-              <div className="mb-6">
-                <label className="text-gray-400 text-sm font-medium block mb-2 text-center">Самочувствие</label>
-                <div className="flex justify-center gap-2">
-                  {Object.entries(RUN_FEELINGS).map(([key, val]) => (
-                    <button
-                      key={key}
-                      onClick={() => setData(prev => updateRunSession(prev, run.id, { feeling: key as any }))}
-                      className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl transition-all"
-                      style={{
-                        backgroundColor: run.feeling === key ? val.color : theme.bg.medium,
-                        transform: run.feeling === key ? 'scale(1.1)' : 'scale(1)'
-                      }}
-                    >
-                      {val.emoji}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              
-              {/* Weather */}
-              <div className="mb-6">
-                <label className="text-gray-400 text-sm font-medium block mb-2 text-center">Погода</label>
-                <div className="flex justify-center gap-2 flex-wrap">
-                  {Object.entries(RUN_WEATHER).map(([key, val]) => (
-                    <button
-                      key={key}
-                      onClick={() => setData(prev => updateRunSession(prev, run.id, { weather: key as any }))}
-                      className="px-3 py-2 rounded-xl text-sm font-medium transition-all flex items-center gap-1"
-                      style={{
-                        backgroundColor: run.weather === key ? theme.accent : theme.bg.medium,
-                        color: run.weather === key ? 'white' : 'gray'
-                      }}
-                    >
-                      {val.emoji} {val.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setShowFinishRunModal(false)}
-                  className="flex-1 py-4 rounded-xl font-bold"
-                  style={{ backgroundColor: theme.bg.medium }}
-                >
-                  Отмена
-                </button>
-                <button
-                  onClick={handleFinishRun}
-                  className="flex-1 py-4 rounded-xl font-bold bg-green-600"
-                >
-                  Сохранить
-                </button>
               </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
       </div>
     );
   };
@@ -2960,7 +3063,21 @@ export default function App() {
                       >
                         {runType?.emoji} {runType?.label}
                       </span>
-                      { /* surface removed */ }
+                      {run.calories && run.calories > 0 && (
+                        <span 
+                          className="px-2 py-1 rounded-lg text-xs font-medium bg-orange-500/20 text-orange-400"
+                        >
+                          🔥 {run.calories} ккал
+                        </span>
+                      )}
+                      {run.steps && run.steps > 0 && (
+                        <span 
+                          className="px-2 py-1 rounded-lg text-xs font-medium"
+                          style={{ backgroundColor: theme.bg.medium, color: theme.accentLight }}
+                        >
+                          👟 {run.steps.toLocaleString()}
+                        </span>
+                      )}
                       {weather && (
                         <span 
                           className="px-2 py-1 rounded-lg text-xs font-medium"
@@ -2974,12 +3091,6 @@ export default function App() {
                         style={{ backgroundColor: theme.bg.medium }}
                       >
                         {formatPace(run.pace || 0)} мин/км
-                      </span>
-                      <span 
-                        className="px-2 py-1 rounded-lg text-xs font-medium"
-                        style={{ backgroundColor: theme.bg.medium }}
-                      >
-                        Усилие: {run.effort}/10
                       </span>
                     </div>
                   </div>
@@ -3148,13 +3259,13 @@ export default function App() {
           <div className="flex items-center justify-between">
             <button 
               onClick={() => setScreen('workout')}
-              className="font-semibold flex items-center"
+              className="font-semibold flex items-center flex-shrink-0"
               style={{ color: theme.accent }}
             >
-              {Icons.chevronLeft} Назад
+              {Icons.chevronLeft}
             </button>
-            <h1 className="text-lg font-bold">Завершить тренировку</h1>
-            <div className="w-16" />
+            <h1 className="text-lg font-bold text-center flex-1 px-2">Завершить</h1>
+            <div className="w-8 flex-shrink-0" />
           </div>
         </header>
 
@@ -3233,12 +3344,12 @@ export default function App() {
             </div>
           </div>
 
-          {/* Bottom Button */}
+          {/* Bottom Button - with extra padding for navigation */}
           <button
             onClick={handleConfirmFinishWorkout}
-            className="w-full py-5 rounded-2xl font-bold text-xl bg-green-600 active:bg-green-500 flex items-center justify-center gap-3 shadow-lg mb-8"
+            className="w-full py-5 rounded-2xl font-bold text-xl bg-green-600 active:bg-green-500 flex items-center justify-center gap-3 shadow-lg mb-24"
           >
-            {Icons.check} Завершить тренировку
+            {Icons.check} Завершить
           </button>
         </div>
       </div>

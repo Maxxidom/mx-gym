@@ -75,6 +75,13 @@ export const calculateRunCalories = (
   return calculateCalories(met, weightKg, timeSeconds, 1.0);
 };
 
+// Estimate steps from distance and run type
+// Walking: ~1300 steps/km, Running: ~1400-1600 steps/km (shorter stride at higher speed)
+export const estimateSteps = (distanceKm: number, runType: string): number => {
+  const stepsPerKm = runType === 'walking' ? 1300 : 1500;
+  return Math.round(distanceKm * stepsPerKm);
+};
+
 // Calculate workout calories (силовые - ~40% активное время из-за отдыха между подходами)
 export const calculateWorkoutCalories = (
   intensity: WorkoutIntensity,
@@ -878,7 +885,13 @@ export const updateRunSession = (data: AppData, runId: string, updates: Partial<
   };
 };
 
-export const completeRunSession = (data: AppData, runId: string, distance: number): AppData => {
+export const completeRunSession = (
+  data: AppData, 
+  runId: string, 
+  distance: number,
+  customCalories?: number,
+  customSteps?: number
+): AppData => {
   const run = data.runSessions.find(r => r.id === runId);
   if (!run) return data;
   
@@ -895,6 +908,11 @@ export const completeRunSession = (data: AppData, runId: string, distance: numbe
   
   const { pace, speed } = calculateRunStats(finalTime, distance);
   
+  // Calculate calories and steps
+  const weight = getCurrentWeight(data);
+  const calculatedCalories = weight > 0 ? calculateRunCalories(run.runType, weight, finalTime) : 0;
+  const calculatedSteps = estimateSteps(distance, run.runType);
+  
   return {
     ...data,
     runSessions: data.runSessions.map(r => {
@@ -908,6 +926,8 @@ export const completeRunSession = (data: AppData, runId: string, distance: numbe
         distance,
         pace,
         speed,
+        calories: customCalories !== undefined ? customCalories : calculatedCalories,
+        steps: customSteps !== undefined ? customSteps : calculatedSteps,
         completed: true,
         completedAt: new Date().toISOString(),
       };
@@ -1100,12 +1120,14 @@ export const completeWorkoutWithDetails = (
   };
 };
 
-// Complete run with calories calculation
+// Complete run with calories and steps calculation
 export const completeRunWithCalories = (
   data: AppData,
   runId: string,
   distance: number,
-  feeling?: string
+  feeling?: string,
+  customCalories?: number,
+  customSteps?: number
 ): AppData => {
   const run = data.runSessions.find(r => r.id === runId);
   if (!run) return data;
@@ -1125,7 +1147,8 @@ export const completeRunWithCalories = (
   
   // Get current weight and calculate calories
   const weight = getCurrentWeight(data);
-  const calories = weight > 0 ? calculateRunCalories(run.runType, weight, finalTime) : 0;
+  const calculatedCalories = weight > 0 ? calculateRunCalories(run.runType, weight, finalTime) : 0;
+  const calculatedSteps = estimateSteps(distance, run.runType);
   
   return {
     ...data,
@@ -1140,7 +1163,8 @@ export const completeRunWithCalories = (
         distance,
         pace,
         speed,
-        calories,
+        calories: customCalories !== undefined ? customCalories : calculatedCalories,
+        steps: customSteps !== undefined ? customSteps : calculatedSteps,
         feeling: feeling as any,
         completed: true,
         completedAt: new Date().toISOString(),

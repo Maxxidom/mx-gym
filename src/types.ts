@@ -113,6 +113,7 @@ export interface RunSession {
   segments: { start: string; end: string }[];
   // Distance & pace
   distance: number; // km
+  steps?: number; // estimated steps
   // Details
   runType: RunType;
   surface: RunSurface;
