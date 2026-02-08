@@ -55,9 +55,42 @@ export interface BodyWeightEntry {
   createdAt: string;
 }
 
+// Running types
+export type RunType = 'easy' | 'tempo' | 'intervals' | 'long' | 'recovery' | 'race';
+export type RunSurface = 'asphalt' | 'trail' | 'track' | 'treadmill' | 'grass';
+export type RunWeather = 'sunny' | 'cloudy' | 'rainy' | 'snowy' | 'windy' | 'hot' | 'cold';
+export type RunFeeling = 'great' | 'good' | 'okay' | 'tired' | 'exhausted';
+export type RunTimerStatus = 'idle' | 'running' | 'paused' | 'completed';
+
+export interface RunSession {
+  id: string;
+  date: string;
+  // Time
+  timerStatus: RunTimerStatus;
+  totalTime: number; // seconds (excluding pauses)
+  startedAt?: string;
+  segments: { start: string; end: string }[];
+  // Distance & pace
+  distance: number; // km
+  // Details
+  runType: RunType;
+  surface: RunSurface;
+  weather?: RunWeather;
+  effort: number; // 1-10
+  feeling?: RunFeeling;
+  notes?: string;
+  // Calculated
+  pace?: number; // seconds per km
+  speed?: number; // km/h
+  // Completion
+  completed: boolean;
+  completedAt?: string;
+}
+
 export interface AppData {
   templates: ExerciseTemplate[];
   trainingDays: TrainingDay[];
   workouts: Workout[];
   bodyWeight: BodyWeightEntry[];
+  runSessions: RunSession[];
 }

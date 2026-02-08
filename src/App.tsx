@@ -35,6 +35,19 @@ import {
   pauseExerciseTimer,
   completeExerciseTimer,
   formatTime,
+  formatTimeHMS,
+  formatPace,
+  startRunSession,
+  pauseRunSession,
+  resumeRunSession,
+  updateRunSession,
+  completeRunSession,
+  deleteRunSession,
+  getRunStats,
+  RUN_TYPES,
+  RUN_SURFACES,
+  RUN_WEATHER,
+  RUN_FEELINGS,
 } from './store';
 
 // Theme colors - Modern Fitness App palette
@@ -190,9 +203,23 @@ const Icons = {
       <line x1="12" y1="15" x2="12" y2="3"/>
     </svg>
   ),
+  running: (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="17" cy="4" r="2"/>
+      <path d="M15 22V13l-4-1-2.5 4.5"/>
+      <path d="M7 10l3.5 1.5L14 7l-3-1"/>
+      <path d="M3 22l4-8"/>
+    </svg>
+  ),
+  flag: (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/>
+      <line x1="4" y1="22" x2="4" y2="15"/>
+    </svg>
+  ),
 };
 
-type Screen = 'home' | 'workout' | 'exercise' | 'programs' | 'catalog' | 'stats' | 'weight' | 'addExercise' | 'editWorkout';
+type Screen = 'home' | 'workout' | 'exercise' | 'programs' | 'catalog' | 'stats' | 'weight' | 'addExercise' | 'editWorkout' | 'running' | 'activeRun';
 
 // Confirm Modal Component
 interface ConfirmModalProps {
@@ -447,12 +474,12 @@ export default function App() {
 
   // Render navigation
   const renderNav = () => (
-    <nav className="fixed bottom-0 left-0 right-0 backdrop-blur-xl px-2 pb-safe z-50" style={{ backgroundColor: `${theme.bg.darkest}ee`, borderTop: `1px solid ${theme.bg.medium}` }}>
+    <nav className="fixed bottom-0 left-0 right-0 backdrop-blur-xl px-1 pb-safe z-50" style={{ backgroundColor: `${theme.bg.darkest}ee`, borderTop: `1px solid ${theme.bg.medium}` }}>
       <div className="flex justify-around py-1">
         {[
           { id: 'home', icon: Icons.home, label: 'Главная' },
           { id: 'programs', icon: Icons.calendar, label: 'Программы' },
-          { id: 'catalog', icon: Icons.dumbbell, label: 'Каталог' },
+          { id: 'running', icon: Icons.running, label: 'Бег' },
           { id: 'weight', icon: Icons.scale, label: 'Вес' },
           { id: 'stats', icon: Icons.chart, label: 'Прогресс' },
         ].map(item => (
@@ -2309,6 +2336,550 @@ export default function App() {
     );
   };
 
+  // Running Screen
+  const [activeRunId, setActiveRunId] = useState<string | null>(null);
+  const [finishRunDistance, setFinishRunDistance] = useState('');
+  const [showFinishRunModal, setShowFinishRunModal] = useState(false);
+  
+  const activeRun = data.runSessions.find(r => r.id === activeRunId);
+  const activeOrUnfinishedRun = activeRun || data.runSessions.find(r => !r.completed);
+  
+  // Calculate current run time
+  const getCurrentRunTime = (run: typeof activeRun) => {
+    if (!run) return 0;
+    let time = run.totalTime;
+    if (run.timerStatus === 'running' && run.startedAt) {
+      const now = new Date();
+      const start = new Date(run.startedAt);
+      time += Math.floor((now.getTime() - start.getTime()) / 1000);
+    }
+    return time;
+  };
+  
+  const handleStartRun = () => {
+    const newData = startRunSession(data);
+    setData(newData);
+    const newRun = newData.runSessions[newData.runSessions.length - 1];
+    setActiveRunId(newRun.id);
+    setScreen('activeRun');
+  };
+  
+  const handlePauseRun = () => {
+    if (!activeRunId) return;
+    setData(prev => pauseRunSession(prev, activeRunId));
+  };
+  
+  const handleResumeRun = () => {
+    if (!activeRunId) return;
+    setData(prev => resumeRunSession(prev, activeRunId));
+  };
+  
+  const handleFinishRun = () => {
+    if (!activeRunId) return;
+    const distance = parseFloat(finishRunDistance) || 0;
+    setData(prev => completeRunSession(prev, activeRunId, distance));
+    setActiveRunId(null);
+    setFinishRunDistance('');
+    setShowFinishRunModal(false);
+    setScreen('running');
+  };
+  
+  const handleDeleteRun = (runId: string) => {
+    showConfirm({
+      title: 'Удалить пробежку?',
+      message: 'Эта пробежка будет удалена из истории.',
+      confirmText: 'Удалить',
+      confirmColor: 'red',
+      onConfirm: () => {
+        hideConfirm();
+        setData(prev => deleteRunSession(prev, runId));
+        if (activeRunId === runId) {
+          setActiveRunId(null);
+          setScreen('running');
+        }
+      },
+    });
+  };
+
+  const renderActiveRun = () => {
+    const run = activeOrUnfinishedRun;
+    if (!run) {
+      if (screen === 'activeRun') {
+        setTimeout(() => setScreen('running'), 0);
+      }
+      return null;
+    }
+    
+    const currentTime = getCurrentRunTime(run);
+    const isRunning = run.timerStatus === 'running';
+    const isPaused = run.timerStatus === 'paused';
+    
+    return (
+      <div className="fixed inset-0 text-white z-50 flex flex-col" style={{ backgroundColor: theme.bg.darkest }}>
+        {/* Header */}
+        <header className="px-5 pt-12 pb-4 flex-shrink-0" style={{ borderBottom: `1px solid ${theme.bg.medium}` }}>
+          <div className="flex items-center justify-between">
+            <button 
+              onClick={() => {
+                if (run.timerStatus === 'idle') {
+                  setData(prev => deleteRunSession(prev, run.id));
+                }
+                setActiveRunId(null);
+                setScreen('running');
+              }}
+              className="font-semibold flex items-center"
+              style={{ color: theme.accent }}
+            >
+              {Icons.chevronLeft} Назад
+            </button>
+            <h1 className="text-lg font-bold">Пробежка</h1>
+            <div className="w-16" />
+          </div>
+        </header>
+        
+        {/* Timer Display */}
+        <div className="flex-1 flex flex-col items-center justify-center px-5">
+          <div className="relative">
+            <div 
+              className="w-64 h-64 rounded-full flex flex-col items-center justify-center"
+              style={{ 
+                background: isRunning 
+                  ? `conic-gradient(${theme.accent} ${(currentTime % 60) / 60 * 360}deg, ${theme.bg.dark} 0deg)`
+                  : theme.bg.dark,
+                boxShadow: isRunning ? `0 0 60px ${theme.accent}40` : 'none'
+              }}
+            >
+              <div 
+                className="w-56 h-56 rounded-full flex flex-col items-center justify-center"
+                style={{ backgroundColor: theme.bg.darkest }}
+              >
+                <p className="text-5xl font-bold font-mono tracking-tight">
+                  {formatTimeHMS(currentTime)}
+                </p>
+                <p className="text-gray-500 mt-2">
+                  {isRunning ? 'В процессе' : isPaused ? 'Пауза' : 'Готов к старту'}
+                </p>
+              </div>
+            </div>
+          </div>
+          
+          {/* Run Type & Surface selectors */}
+          <div className="mt-8 w-full max-w-sm">
+            <div className="grid grid-cols-2 gap-3 mb-4">
+              <div className="rounded-2xl p-4" style={{ backgroundColor: theme.bg.dark, border: `1px solid ${theme.bg.medium}` }}>
+                <p className="text-gray-500 text-xs font-medium mb-2">Тип пробежки</p>
+                <div className="flex flex-wrap gap-1">
+                  {Object.entries(RUN_TYPES).map(([key, val]) => (
+                    <button
+                      key={key}
+                      onClick={() => setData(prev => updateRunSession(prev, run.id, { runType: key as any }))}
+                      className="px-2 py-1 rounded-lg text-xs font-medium transition-all"
+                      style={{
+                        backgroundColor: run.runType === key ? theme.accent : theme.bg.medium,
+                        color: run.runType === key ? 'white' : 'gray'
+                      }}
+                    >
+                      {val.emoji} {val.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="rounded-2xl p-4" style={{ backgroundColor: theme.bg.dark, border: `1px solid ${theme.bg.medium}` }}>
+                <p className="text-gray-500 text-xs font-medium mb-2">Поверхность</p>
+                <div className="flex flex-wrap gap-1">
+                  {Object.entries(RUN_SURFACES).map(([key, val]) => (
+                    <button
+                      key={key}
+                      onClick={() => setData(prev => updateRunSession(prev, run.id, { surface: key as any }))}
+                      className="px-2 py-1 rounded-lg text-xs font-medium transition-all"
+                      style={{
+                        backgroundColor: run.surface === key ? theme.accent : theme.bg.medium,
+                        color: run.surface === key ? 'white' : 'gray'
+                      }}
+                    >
+                      {val.emoji}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        {/* Control Buttons */}
+        <div className="p-5 flex-shrink-0" style={{ borderTop: `1px solid ${theme.bg.medium}` }}>
+          <div className="flex gap-3">
+            {run.timerStatus === 'idle' && (
+              <button
+                onClick={() => {
+                  setActiveRunId(run.id);
+                  setData(prev => resumeRunSession(prev, run.id));
+                }}
+                className="flex-1 py-5 rounded-2xl font-bold text-lg flex items-center justify-center gap-2"
+                style={{ background: `linear-gradient(135deg, ${theme.accent} 0%, ${theme.accentDark} 100%)` }}
+              >
+                {Icons.play} Начать
+              </button>
+            )}
+            
+            {isRunning && (
+              <>
+                <button
+                  onClick={handlePauseRun}
+                  className="flex-1 py-5 rounded-2xl font-bold text-lg flex items-center justify-center gap-2 bg-yellow-600"
+                >
+                  {Icons.pause} Пауза
+                </button>
+                <button
+                  onClick={() => {
+                    handlePauseRun();
+                    setShowFinishRunModal(true);
+                  }}
+                  className="py-5 px-6 rounded-2xl font-bold text-lg flex items-center justify-center gap-2 bg-green-600"
+                >
+                  {Icons.flag}
+                </button>
+              </>
+            )}
+            
+            {isPaused && (
+              <>
+                <button
+                  onClick={handleResumeRun}
+                  className="flex-1 py-5 rounded-2xl font-bold text-lg flex items-center justify-center gap-2"
+                  style={{ background: `linear-gradient(135deg, ${theme.accent} 0%, ${theme.accentDark} 100%)` }}
+                >
+                  {Icons.play} Продолжить
+                </button>
+                <button
+                  onClick={() => setShowFinishRunModal(true)}
+                  className="py-5 px-6 rounded-2xl font-bold text-lg flex items-center justify-center gap-2 bg-green-600"
+                >
+                  {Icons.flag} Финиш
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+        
+        {/* Finish Run Modal */}
+        {showFinishRunModal && (
+          <div className="fixed inset-0 bg-black/80 z-[60] flex items-end justify-center">
+            <div 
+              className="w-full max-w-lg rounded-t-3xl p-6 animate-slide-up"
+              style={{ backgroundColor: theme.bg.dark }}
+            >
+              <h3 className="text-xl font-bold text-center mb-6">Завершить пробежку</h3>
+              
+              <div className="mb-6">
+                <label className="text-gray-400 text-sm font-medium block mb-2 text-center">Дистанция (км)</label>
+                <div className="flex items-center rounded-2xl" style={{ backgroundColor: theme.bg.medium }}>
+                  <button
+                    onClick={() => setFinishRunDistance(prev => {
+                      const val = parseFloat(prev) || 0;
+                      return Math.max(0, val - 0.1).toFixed(1);
+                    })}
+                    className="w-16 h-16 flex items-center justify-center rounded-l-2xl"
+                    style={{ color: theme.accent }}
+                  >
+                    {Icons.minus}
+                  </button>
+                  <div className="flex-1 flex justify-center">
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      step="0.1"
+                      value={finishRunDistance}
+                      onChange={(e) => setFinishRunDistance(e.target.value)}
+                      placeholder="0.0"
+                      className="w-24 bg-transparent text-3xl font-bold outline-none"
+                      style={{ textAlign: 'center' }}
+                    />
+                  </div>
+                  <button
+                    onClick={() => setFinishRunDistance(prev => {
+                      const val = parseFloat(prev) || 0;
+                      return (val + 0.1).toFixed(1);
+                    })}
+                    className="w-16 h-16 flex items-center justify-center rounded-r-2xl"
+                    style={{ color: theme.accent }}
+                  >
+                    {Icons.plus}
+                  </button>
+                </div>
+              </div>
+              
+              {/* Effort */}
+              <div className="mb-6">
+                <label className="text-gray-400 text-sm font-medium block mb-2 text-center">
+                  Уровень усилия: {run.effort}/10
+                </label>
+                <input
+                  type="range"
+                  min="1"
+                  max="10"
+                  value={run.effort}
+                  onChange={(e) => setData(prev => updateRunSession(prev, run.id, { effort: parseInt(e.target.value) }))}
+                  className="w-full h-2 rounded-full appearance-none cursor-pointer"
+                  style={{ background: `linear-gradient(90deg, ${theme.accent} ${run.effort * 10}%, ${theme.bg.medium} ${run.effort * 10}%)` }}
+                />
+              </div>
+              
+              {/* Feeling */}
+              <div className="mb-6">
+                <label className="text-gray-400 text-sm font-medium block mb-2 text-center">Самочувствие</label>
+                <div className="flex justify-center gap-2">
+                  {Object.entries(RUN_FEELINGS).map(([key, val]) => (
+                    <button
+                      key={key}
+                      onClick={() => setData(prev => updateRunSession(prev, run.id, { feeling: key as any }))}
+                      className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl transition-all"
+                      style={{
+                        backgroundColor: run.feeling === key ? val.color : theme.bg.medium,
+                        transform: run.feeling === key ? 'scale(1.1)' : 'scale(1)'
+                      }}
+                    >
+                      {val.emoji}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              
+              {/* Weather */}
+              <div className="mb-6">
+                <label className="text-gray-400 text-sm font-medium block mb-2 text-center">Погода</label>
+                <div className="flex justify-center gap-2 flex-wrap">
+                  {Object.entries(RUN_WEATHER).map(([key, val]) => (
+                    <button
+                      key={key}
+                      onClick={() => setData(prev => updateRunSession(prev, run.id, { weather: key as any }))}
+                      className="px-3 py-2 rounded-xl text-sm font-medium transition-all flex items-center gap-1"
+                      style={{
+                        backgroundColor: run.weather === key ? theme.accent : theme.bg.medium,
+                        color: run.weather === key ? 'white' : 'gray'
+                      }}
+                    >
+                      {val.emoji} {val.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowFinishRunModal(false)}
+                  className="flex-1 py-4 rounded-xl font-bold"
+                  style={{ backgroundColor: theme.bg.medium }}
+                >
+                  Отмена
+                </button>
+                <button
+                  onClick={handleFinishRun}
+                  className="flex-1 py-4 rounded-xl font-bold bg-green-600"
+                >
+                  Сохранить
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderRunning = () => {
+    const stats = getRunStats(data);
+    const completedRuns = data.runSessions
+      .filter(r => r.completed)
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    
+    // Check for unfinished run
+    const unfinishedRun = data.runSessions.find(r => !r.completed);
+    
+    return (
+      <div className="min-h-screen text-white pb-28" style={{ backgroundColor: theme.bg.darkest }}>
+        <header className="px-5 pt-4 pb-4">
+          <h1 className="text-2xl font-bold">Бег</h1>
+          <p className="text-gray-400 mt-1">Отслеживание пробежек</p>
+        </header>
+        
+        {/* Continue unfinished run */}
+        {unfinishedRun && (
+          <div className="px-5 mb-6">
+            <button
+              onClick={() => {
+                setActiveRunId(unfinishedRun.id);
+                setScreen('activeRun');
+              }}
+              className="w-full rounded-2xl p-5 text-left shadow-lg"
+              style={{ background: `linear-gradient(135deg, ${theme.accent} 0%, ${theme.accentDark} 100%)` }}
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-indigo-200 text-sm font-medium uppercase tracking-wide">Продолжить</p>
+                  <p className="text-white text-2xl font-bold font-mono mt-1">
+                    {formatTimeHMS(getCurrentRunTime(unfinishedRun))}
+                  </p>
+                  <p className="text-indigo-200 text-sm">{RUN_TYPES[unfinishedRun.runType]?.label}</p>
+                </div>
+                <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center">
+                  {Icons.play}
+                </div>
+              </div>
+            </button>
+          </div>
+        )}
+        
+        {/* Start New Run */}
+        {!unfinishedRun && (
+          <div className="px-5 mb-6">
+            <button
+              onClick={handleStartRun}
+              className="w-full rounded-2xl p-6 active:scale-[0.98] transition-transform"
+              style={{ background: `linear-gradient(135deg, ${theme.accent} 0%, ${theme.accentDark} 100%)` }}
+            >
+              <div className="flex items-center gap-4">
+                <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center">
+                  {Icons.running}
+                </div>
+                <div className="text-left">
+                  <p className="font-bold text-xl">Начать пробежку</p>
+                  <p className="text-indigo-200 text-sm">Запустить таймер</p>
+                </div>
+              </div>
+            </button>
+          </div>
+        )}
+        
+        {/* Stats */}
+        {stats.totalRuns > 0 && (
+          <div className="px-5 mb-6">
+            <div className="grid grid-cols-3 gap-3 mb-4">
+              <div className="rounded-2xl p-4 text-center" style={{ background: `linear-gradient(135deg, ${theme.accent} 0%, ${theme.accentDark} 100%)` }}>
+                <p className="text-indigo-200 text-xs font-medium">Всего</p>
+                <p className="text-2xl font-bold mt-1">{stats.totalDistance}</p>
+                <p className="text-indigo-200 text-xs">км</p>
+              </div>
+              <div className="rounded-2xl p-4 text-center bg-gradient-to-br from-green-600 to-green-700">
+                <p className="text-green-200 text-xs font-medium">За неделю</p>
+                <p className="text-2xl font-bold mt-1">{stats.weekDistance}</p>
+                <p className="text-green-200 text-xs">км</p>
+              </div>
+              <div className="rounded-2xl p-4 text-center bg-gradient-to-br from-orange-600 to-orange-700">
+                <p className="text-orange-200 text-xs font-medium">Лучший темп</p>
+                <p className="text-2xl font-bold mt-1">{formatPace(stats.bestPace)}</p>
+                <p className="text-orange-200 text-xs">мин/км</p>
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-2xl p-4" style={{ backgroundColor: theme.bg.dark, border: `1px solid ${theme.bg.medium}` }}>
+                <p className="text-gray-500 text-xs font-medium">Пробежек</p>
+                <p className="text-xl font-bold mt-1">{stats.totalRuns}</p>
+              </div>
+              <div className="rounded-2xl p-4" style={{ backgroundColor: theme.bg.dark, border: `1px solid ${theme.bg.medium}` }}>
+                <p className="text-gray-500 text-xs font-medium">Ср. дистанция</p>
+                <p className="text-xl font-bold mt-1">{stats.avgDistance} км</p>
+              </div>
+            </div>
+          </div>
+        )}
+        
+        {/* History */}
+        <section className="px-5">
+          <h2 className="text-lg font-bold mb-4">История</h2>
+          {completedRuns.length > 0 ? (
+            <div className="space-y-3">
+              {completedRuns.map(run => {
+                const runType = RUN_TYPES[run.runType];
+                const surface = RUN_SURFACES[run.surface];
+                const feeling = run.feeling ? RUN_FEELINGS[run.feeling] : null;
+                const weather = run.weather ? RUN_WEATHER[run.weather] : null;
+                
+                return (
+                  <div 
+                    key={run.id}
+                    className="rounded-2xl p-4"
+                    style={{ backgroundColor: theme.bg.dark, border: `1px solid ${theme.bg.medium}` }}
+                  >
+                    <div className="flex items-start justify-between mb-3">
+                      <div>
+                        <p className="text-gray-400 text-sm">
+                          {new Date(run.date).toLocaleDateString('ru-RU', {
+                            weekday: 'short',
+                            day: 'numeric',
+                            month: 'short'
+                          })}
+                        </p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className="text-lg font-bold">{run.distance} км</span>
+                          <span className="text-gray-500">•</span>
+                          <span className="text-gray-400">{formatTimeHMS(run.totalTime)}</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {feeling && <span className="text-xl">{feeling.emoji}</span>}
+                        <button
+                          onClick={() => handleDeleteRun(run.id)}
+                          className="text-gray-600 p-2"
+                        >
+                          {Icons.trash}
+                        </button>
+                      </div>
+                    </div>
+                    
+                    <div className="flex flex-wrap gap-2">
+                      <span 
+                        className="px-2 py-1 rounded-lg text-xs font-medium"
+                        style={{ backgroundColor: theme.bg.medium }}
+                      >
+                        {runType?.emoji} {runType?.label}
+                      </span>
+                      <span 
+                        className="px-2 py-1 rounded-lg text-xs font-medium"
+                        style={{ backgroundColor: theme.bg.medium }}
+                      >
+                        {surface?.emoji} {surface?.label}
+                      </span>
+                      {weather && (
+                        <span 
+                          className="px-2 py-1 rounded-lg text-xs font-medium"
+                          style={{ backgroundColor: theme.bg.medium }}
+                        >
+                          {weather.emoji}
+                        </span>
+                      )}
+                      <span 
+                        className="px-2 py-1 rounded-lg text-xs font-medium"
+                        style={{ backgroundColor: theme.bg.medium }}
+                      >
+                        {formatPace(run.pace || 0)} мин/км
+                      </span>
+                      <span 
+                        className="px-2 py-1 rounded-lg text-xs font-medium"
+                        style={{ backgroundColor: theme.bg.medium }}
+                      >
+                        Усилие: {run.effort}/10
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="rounded-2xl p-8 text-center" style={{ backgroundColor: theme.bg.dark, border: `1px solid ${theme.bg.medium}` }}>
+              <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4" style={{ backgroundColor: theme.bg.medium }}>
+                {Icons.running}
+              </div>
+              <p className="text-gray-400 font-medium">Нет пробежек</p>
+              <p className="text-gray-500 text-sm mt-1">Начните первую пробежку</p>
+            </div>
+          )}
+        </section>
+      </div>
+    );
+  };
+
   // Stats Screen
   const renderStats = () => {
     const completedWorkouts = data.workouts.filter(w => w.completed);
@@ -2424,11 +2995,13 @@ export default function App() {
       {screen === 'programs' && renderPrograms()}
       {screen === 'catalog' && renderCatalog()}
       {screen === 'weight' && renderWeight()}
+      {screen === 'running' && renderRunning()}
+      {screen === 'activeRun' && renderActiveRun()}
       {screen === 'stats' && renderStats()}
       
       {renderHistory()}
       
-      {screen !== 'exercise' && screen !== 'workout' && screen !== 'addExercise' && screen !== 'editWorkout' && renderNav()}
+      {screen !== 'exercise' && screen !== 'workout' && screen !== 'addExercise' && screen !== 'editWorkout' && screen !== 'activeRun' && renderNav()}
       
       <ConfirmModal
         isOpen={confirmModal.isOpen}

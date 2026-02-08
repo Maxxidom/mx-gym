@@ -1,4 +1,4 @@
-import { AppData, ExerciseTemplate, TrainingDay, Workout, WorkoutExercise, WorkoutSet } from './types';
+import { AppData, ExerciseTemplate, TrainingDay, Workout, WorkoutExercise, WorkoutSet, RunSession } from './types';
 
 const STORAGE_KEY = 'gym_app_data';
 
@@ -168,7 +168,83 @@ const createDemoData = (): AppData => {
     { id: 'bw11', date: new Date().toISOString().split('T')[0], weight: 82.2, createdAt: new Date().toISOString() },
   ];
 
-  return { templates, trainingDays, workouts, bodyWeight };
+  // Демо данные пробежек
+  const runSessions: RunSession[] = [
+    {
+      id: 'r1',
+      date: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      timerStatus: 'completed',
+      totalTime: 1800, // 30 минут
+      segments: [],
+      distance: 5.2,
+      runType: 'easy',
+      surface: 'asphalt',
+      weather: 'sunny',
+      effort: 5,
+      feeling: 'good',
+      notes: 'Утренняя пробежка в парке',
+      pace: 346, // 5:46/км
+      speed: 10.4,
+      completed: true,
+      completedAt: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString(),
+    },
+    {
+      id: 'r2',
+      date: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      timerStatus: 'completed',
+      totalTime: 2700, // 45 минут
+      segments: [],
+      distance: 7.5,
+      runType: 'tempo',
+      surface: 'asphalt',
+      weather: 'cloudy',
+      effort: 7,
+      feeling: 'okay',
+      notes: 'Темповая тренировка',
+      pace: 360,
+      speed: 10.0,
+      completed: true,
+      completedAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(),
+    },
+    {
+      id: 'r3',
+      date: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      timerStatus: 'completed',
+      totalTime: 3600, // 60 минут
+      segments: [],
+      distance: 10.0,
+      runType: 'long',
+      surface: 'trail',
+      weather: 'sunny',
+      effort: 6,
+      feeling: 'great',
+      notes: 'Длинная пробежка по лесу',
+      pace: 360,
+      speed: 10.0,
+      completed: true,
+      completedAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
+    },
+    {
+      id: 'r4',
+      date: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      timerStatus: 'completed',
+      totalTime: 1500, // 25 минут
+      segments: [],
+      distance: 4.5,
+      runType: 'recovery',
+      surface: 'treadmill',
+      weather: undefined,
+      effort: 3,
+      feeling: 'good',
+      notes: 'Восстановительная пробежка на дорожке',
+      pace: 333,
+      speed: 10.8,
+      completed: true,
+      completedAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
+    },
+  ];
+
+  return { templates, trainingDays, workouts, bodyWeight, runSessions };
 };
 
 // Migrate old exercise data to include timer fields
@@ -187,6 +263,9 @@ export const loadData = (): AppData => {
       // Миграция данных
       if (!data.bodyWeight) {
         data.bodyWeight = [];
+      }
+      if (!data.runSessions) {
+        data.runSessions = [];
       }
       // Migrate workouts to include timer fields
       data.workouts = data.workouts.map((w: any) => ({
@@ -619,4 +698,223 @@ export const formatTime = (seconds: number): string => {
   const mins = Math.floor(seconds / 60);
   const secs = seconds % 60;
   return `${mins}:${secs.toString().padStart(2, '0')}`;
+};
+
+// Format seconds to h:mm:ss
+export const formatTimeHMS = (seconds: number): string => {
+  const hours = Math.floor(seconds / 3600);
+  const mins = Math.floor((seconds % 3600) / 60);
+  const secs = seconds % 60;
+  if (hours > 0) {
+    return `${hours}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  }
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+};
+
+// Format pace (seconds per km) to mm:ss
+export const formatPace = (paceSeconds: number): string => {
+  if (!paceSeconds || paceSeconds === Infinity) return '--:--';
+  const mins = Math.floor(paceSeconds / 60);
+  const secs = Math.round(paceSeconds % 60);
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+};
+
+// Calculate pace and speed from time and distance
+export const calculateRunStats = (totalSeconds: number, distanceKm: number) => {
+  if (distanceKm <= 0) {
+    return { pace: 0, speed: 0 };
+  }
+  const pace = totalSeconds / distanceKm; // seconds per km
+  const speed = (distanceKm / totalSeconds) * 3600; // km/h
+  return { pace, speed: Math.round(speed * 10) / 10 };
+};
+
+// Run session functions
+export const startRunSession = (data: AppData): AppData => {
+  const now = new Date().toISOString();
+  const newRun: RunSession = {
+    id: generateId(),
+    date: new Date().toISOString().split('T')[0],
+    timerStatus: 'running',
+    totalTime: 0,
+    startedAt: now,
+    segments: [],
+    distance: 0,
+    runType: 'easy',
+    surface: 'asphalt',
+    effort: 5,
+    completed: false,
+  };
+  return { ...data, runSessions: [...data.runSessions, newRun] };
+};
+
+export const pauseRunSession = (data: AppData, runId: string): AppData => {
+  const run = data.runSessions.find(r => r.id === runId);
+  if (!run || !run.startedAt) return data;
+  
+  const now = new Date();
+  const startTime = new Date(run.startedAt);
+  const elapsedSeconds = Math.floor((now.getTime() - startTime.getTime()) / 1000);
+  
+  return {
+    ...data,
+    runSessions: data.runSessions.map(r => {
+      if (r.id !== runId) return r;
+      return {
+        ...r,
+        timerStatus: 'paused',
+        totalTime: r.totalTime + elapsedSeconds,
+        startedAt: undefined,
+        segments: [...r.segments, { start: run.startedAt!, end: now.toISOString() }],
+      };
+    }),
+  };
+};
+
+export const resumeRunSession = (data: AppData, runId: string): AppData => {
+  const now = new Date().toISOString();
+  return {
+    ...data,
+    runSessions: data.runSessions.map(r => {
+      if (r.id !== runId) return r;
+      return {
+        ...r,
+        timerStatus: 'running',
+        startedAt: now,
+      };
+    }),
+  };
+};
+
+export const updateRunSession = (data: AppData, runId: string, updates: Partial<RunSession>): AppData => {
+  return {
+    ...data,
+    runSessions: data.runSessions.map(r => r.id === runId ? { ...r, ...updates } : r),
+  };
+};
+
+export const completeRunSession = (data: AppData, runId: string, distance: number): AppData => {
+  const run = data.runSessions.find(r => r.id === runId);
+  if (!run) return data;
+  
+  let finalTime = run.totalTime;
+  const segments = [...run.segments];
+  
+  // If timer is running, add current segment
+  if (run.timerStatus === 'running' && run.startedAt) {
+    const now = new Date();
+    const startTime = new Date(run.startedAt);
+    finalTime += Math.floor((now.getTime() - startTime.getTime()) / 1000);
+    segments.push({ start: run.startedAt, end: now.toISOString() });
+  }
+  
+  const { pace, speed } = calculateRunStats(finalTime, distance);
+  
+  return {
+    ...data,
+    runSessions: data.runSessions.map(r => {
+      if (r.id !== runId) return r;
+      return {
+        ...r,
+        timerStatus: 'completed',
+        totalTime: finalTime,
+        startedAt: undefined,
+        segments,
+        distance,
+        pace,
+        speed,
+        completed: true,
+        completedAt: new Date().toISOString(),
+      };
+    }),
+  };
+};
+
+export const deleteRunSession = (data: AppData, runId: string): AppData => {
+  return {
+    ...data,
+    runSessions: data.runSessions.filter(r => r.id !== runId),
+  };
+};
+
+export const getRunStats = (data: AppData) => {
+  const completed = data.runSessions.filter(r => r.completed);
+  if (completed.length === 0) {
+    return {
+      totalRuns: 0,
+      totalDistance: 0,
+      totalTime: 0,
+      avgPace: 0,
+      avgDistance: 0,
+      bestPace: 0,
+      longestRun: 0,
+      weekDistance: 0,
+      monthDistance: 0,
+    };
+  }
+  
+  const totalDistance = completed.reduce((sum, r) => sum + r.distance, 0);
+  const totalTime = completed.reduce((sum, r) => sum + r.totalTime, 0);
+  const avgPace = totalTime / totalDistance;
+  const avgDistance = totalDistance / completed.length;
+  const bestPace = Math.min(...completed.filter(r => r.pace && r.pace > 0).map(r => r.pace!));
+  const longestRun = Math.max(...completed.map(r => r.distance));
+  
+  // Week distance
+  const now = new Date();
+  const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const weekRuns = completed.filter(r => new Date(r.date) >= weekAgo);
+  const weekDistance = weekRuns.reduce((sum, r) => sum + r.distance, 0);
+  
+  // Month distance
+  const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+  const monthRuns = completed.filter(r => new Date(r.date) >= monthAgo);
+  const monthDistance = monthRuns.reduce((sum, r) => sum + r.distance, 0);
+  
+  return {
+    totalRuns: completed.length,
+    totalDistance: Math.round(totalDistance * 10) / 10,
+    totalTime,
+    avgPace: Math.round(avgPace),
+    avgDistance: Math.round(avgDistance * 10) / 10,
+    bestPace: bestPace === Infinity ? 0 : Math.round(bestPace),
+    longestRun: Math.round(longestRun * 10) / 10,
+    weekDistance: Math.round(weekDistance * 10) / 10,
+    monthDistance: Math.round(monthDistance * 10) / 10,
+  };
+};
+
+export const RUN_TYPES: Record<string, { label: string; emoji: string }> = {
+  easy: { label: 'Лёгкий', emoji: '🚶' },
+  tempo: { label: 'Темповый', emoji: '🏃' },
+  intervals: { label: 'Интервалы', emoji: '⚡' },
+  long: { label: 'Длинный', emoji: '🛤️' },
+  recovery: { label: 'Восстановление', emoji: '💆' },
+  race: { label: 'Соревнование', emoji: '🏆' },
+};
+
+export const RUN_SURFACES: Record<string, { label: string; emoji: string }> = {
+  asphalt: { label: 'Асфальт', emoji: '🛣️' },
+  trail: { label: 'Тропа', emoji: '🌲' },
+  track: { label: 'Стадион', emoji: '🏟️' },
+  treadmill: { label: 'Дорожка', emoji: '🏠' },
+  grass: { label: 'Трава', emoji: '🌿' },
+};
+
+export const RUN_WEATHER: Record<string, { label: string; emoji: string }> = {
+  sunny: { label: 'Солнечно', emoji: '☀️' },
+  cloudy: { label: 'Облачно', emoji: '☁️' },
+  rainy: { label: 'Дождь', emoji: '🌧️' },
+  snowy: { label: 'Снег', emoji: '❄️' },
+  windy: { label: 'Ветер', emoji: '💨' },
+  hot: { label: 'Жарко', emoji: '🥵' },
+  cold: { label: 'Холодно', emoji: '🥶' },
+};
+
+export const RUN_FEELINGS: Record<string, { label: string; emoji: string; color: string }> = {
+  great: { label: 'Отлично', emoji: '🤩', color: '#22c55e' },
+  good: { label: 'Хорошо', emoji: '😊', color: '#84cc16' },
+  okay: { label: 'Нормально', emoji: '😐', color: '#eab308' },
+  tired: { label: 'Устал', emoji: '😓', color: '#f97316' },
+  exhausted: { label: 'Измотан', emoji: '😵', color: '#ef4444' },
 };
