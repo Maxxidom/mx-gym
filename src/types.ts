@@ -1,18 +1,34 @@
 export type ExerciseCategory = 'cardio' | 'machine' | 'free_weights';
 
+// Tracking type - what parameters to track for this exercise
+export type ExerciseTrackingType = 'strength' | 'cardio';
+
 export interface ExerciseTemplate {
   id: string;
   machineNumber: string;
   name: string;
   description: string;
   category: ExerciseCategory;
+  trackingType: ExerciseTrackingType; // 'strength' = sets/reps/weight, 'cardio' = time/distance/speed
   createdAt: string;
 }
 
+// For strength exercises (machines, free weights)
 export interface WorkoutSet {
   id: string;
   reps: number;
   weight: number;
+  completed: boolean;
+}
+
+// For cardio exercises (treadmill, bike, elliptical)
+export interface CardioSet {
+  id: string;
+  duration: number; // seconds
+  distance: number; // km
+  speed: number; // km/h (calculated or manual)
+  level: number; // resistance/incline level 1-20
+  calories: number; // calories burned
   completed: boolean;
 }
 
@@ -22,6 +38,7 @@ export interface WorkoutExercise {
   id: string;
   templateId: string;
   sets: WorkoutSet[];
+  cardioData?: CardioSet; // For cardio exercises
   completed: boolean;
   order: number;
   // Timer fields
@@ -77,31 +94,6 @@ export type RunSurface = string; // Removed, kept for backwards compatibility
 export type RunWeather = 'sunny' | 'cloudy' | 'rainy' | 'snowy' | 'windy' | 'hot' | 'cold';
 export type RunFeeling = 'great' | 'good' | 'okay' | 'tired' | 'exhausted';
 export type RunTimerStatus = 'idle' | 'running' | 'paused' | 'completed';
-
-export interface RunSession {
-  id: string;
-  date: string;
-  // Time
-  timerStatus: RunTimerStatus;
-  totalTime: number; // seconds (excluding pauses)
-  startedAt?: string;
-  segments: { start: string; end: string }[];
-  // Distance & pace
-  distance: number; // km
-  // Details
-  runType: RunType;
-  surface: RunSurface;
-  weather?: RunWeather;
-  effort: number; // 1-10
-  feeling?: RunFeeling;
-  notes?: string;
-  // Calculated
-  pace?: number; // seconds per km
-  speed?: number; // km/h
-  // Completion
-  completed: boolean;
-  completedAt?: string;
-}
 
 export interface RunSession {
   id: string;

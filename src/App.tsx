@@ -428,6 +428,7 @@ export default function App() {
   // Finish workout state
   const [finishIntensity, setFinishIntensity] = useState<WorkoutIntensity>('moderate');
   const [finishFeeling, setFinishFeeling] = useState<string>('good');
+  const [finishWorkoutCalories, setFinishWorkoutCalories] = useState<string>('');
   
   const handleFinishWorkout = () => {
     if (activeWorkoutId) {
@@ -443,8 +444,9 @@ export default function App() {
         const totalTime = workout.exercises.reduce((sum, e) => sum + (e.totalTime || 0), 0);
         // Get current weight
         const weight = getCurrentWeight(data);
-        // Calculate calories
-        const calories = weight > 0 ? calculateWorkoutCalories(finishIntensity, weight, totalTime) : 0;
+        // Calculate calories - use custom value if provided
+        const estimatedCalories = weight > 0 ? calculateWorkoutCalories(finishIntensity, weight, totalTime) : 0;
+        const calories = finishWorkoutCalories ? parseInt(finishWorkoutCalories) : estimatedCalories;
         
         setData(prev => ({
           ...prev,
@@ -466,6 +468,7 @@ export default function App() {
       setActiveExerciseId(null);
       setFinishIntensity('moderate');
       setFinishFeeling('good');
+      setFinishWorkoutCalories('');
       setScreen('home');
     }
   };
@@ -539,6 +542,7 @@ export default function App() {
         {[
           { id: 'home', icon: Icons.home, label: 'Главная' },
           { id: 'programs', icon: Icons.calendar, label: 'Программы' },
+          { id: 'catalog', icon: Icons.dumbbell, label: 'Каталог' },
           { id: 'running', icon: Icons.running, label: 'Бег' },
           { id: 'weight', icon: Icons.scale, label: 'Вес' },
           { id: 'stats', icon: Icons.chart, label: 'Прогресс' },
@@ -546,14 +550,14 @@ export default function App() {
           <button
             key={item.id}
             onClick={() => setScreen(item.id as Screen)}
-            className={`flex flex-col items-center py-2 px-3 rounded-2xl transition-all ${
+            className={`flex flex-col items-center py-2 px-2 rounded-xl transition-all ${
               screen === item.id 
                 ? 'text-white' 
                 : 'text-gray-500'
             }`}
           >
-            <span style={{ color: screen === item.id ? theme.accent : undefined }}>{item.icon}</span>
-            <span className="text-[10px] mt-1 font-medium">{item.label}</span>
+            <span className="scale-90" style={{ color: screen === item.id ? theme.accent : undefined }}>{item.icon}</span>
+            <span className="text-[9px] mt-0.5 font-medium">{item.label}</span>
           </button>
         ))}
       </div>
@@ -1220,6 +1224,32 @@ export default function App() {
   // Exercise Screen (Full-screen modal) - Compact layout
   const [showLastWorkout, setShowLastWorkout] = useState(false);
   
+  // Handler for updating cardio data
+  const handleUpdateCardioData = (updates: Partial<{ distance: number; level: number; calories: number }>) => {
+    if (!activeWorkoutId || !activeExerciseId) return;
+    setData(prev => ({
+      ...prev,
+      workouts: prev.workouts.map(w => 
+        w.id === activeWorkoutId 
+          ? {
+              ...w,
+              exercises: w.exercises.map(e => 
+                e.id === activeExerciseId 
+                  ? { 
+                      ...e, 
+                      cardioData: { 
+                        ...(e.cardioData || { id: e.id, duration: 0, distance: 0, speed: 0, level: 1, calories: 0, completed: false }), 
+                        ...updates 
+                      } 
+                    }
+                  : e
+              ),
+            }
+          : w
+      ),
+    }));
+  };
+  
   const renderExercise = () => {
     if (!activeWorkout) {
       if (screen === 'exercise') {
@@ -1240,9 +1270,28 @@ export default function App() {
     
     const category = CATEGORY_INFO[template.category];
     const lastWorkout = getLastWorkoutForExercise(data, activeExercise.templateId);
-    const allCompleted = activeExercise.sets.every(s => s.completed);
+    const isCardio = template.trackingType === 'cardio';
+    const allCompleted = isCardio 
+      ? (activeExercise.cardioData?.completed || false)
+      : activeExercise.sets.every(s => s.completed);
     const currentTime = getCurrentTime(activeExercise);
     const timerStatus = activeExercise.timerStatus;
+    
+    // Cardio data with defaults
+    const cardioData = activeExercise.cardioData || {
+      id: activeExercise.id,
+      duration: currentTime,
+      distance: 0,
+      speed: 0,
+      level: 1,
+      calories: 0,
+      completed: false,
+    };
+    
+    // Calculate speed from distance and time
+    const calculatedSpeed = currentTime > 0 && cardioData.distance > 0 
+      ? (cardioData.distance / (currentTime / 3600)).toFixed(1)
+      : '0.0';
 
     return (
       <div className="fixed inset-0 text-white z-50 flex flex-col" style={{ backgroundColor: theme.bg.darkest }}>
@@ -1262,7 +1311,7 @@ export default function App() {
               {Icons.chevronLeft} Назад
             </button>
             <div className="flex items-center gap-2">
-              {lastWorkout && (
+              {lastWorkout && !isCardio && (
                 <button
                   onClick={() => setShowLastWorkout(!showLastWorkout)}
                   className="text-xs px-3 py-1.5 rounded-full font-medium flex items-center gap-1"
@@ -1350,8 +1399,8 @@ export default function App() {
           </div>
         </header>
         
-        {/* Last workout popup */}
-        {showLastWorkout && lastWorkout && (
+        {/* Last workout popup - only for strength exercises */}
+        {showLastWorkout && lastWorkout && !isCardio && (
           <div className="px-4 py-2 flex-shrink-0" style={{ backgroundColor: theme.bg.dark, borderBottom: `1px solid ${theme.bg.medium}` }}>
             <div className="flex items-center justify-between mb-2">
               <p className="text-gray-400 text-xs font-medium uppercase">Последняя тренировка</p>
@@ -1372,127 +1421,246 @@ export default function App() {
           </div>
         )}
 
-        {/* Sets - main scrollable area */}
+        {/* Main content area */}
         <div className="flex-1 overflow-auto px-4 py-3">
-          <div className="space-y-3">
-            {activeExercise.sets.map((set, index) => (
-              <div
-                key={set.id}
-                className="rounded-xl p-4 transition-all"
-                style={{
-                  backgroundColor: set.completed ? 'rgba(16, 185, 129, 0.1)' : theme.bg.dark,
-                  border: `1px solid ${set.completed ? 'rgba(16, 185, 129, 0.3)' : theme.bg.medium}`
-                }}
-              >
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-gray-400 font-bold">Подход {index + 1}</span>
-                  <div className="flex items-center">
-                    {activeExercise.sets.length > 1 && (
-                      <button
-                        onClick={() => {
-                          showConfirm({
-                            title: 'Удалить подход?',
-                            message: `Подход ${index + 1} будет удалён.`,
-                            confirmText: 'Удалить',
-                            confirmColor: 'red',
-                            onConfirm: () => {
-                              hideConfirm();
-                              handleDeleteSet(activeExercise.id, set.id);
-                            },
-                          });
-                        }}
-                        className="text-gray-600 active:text-red-500 p-2 mr-4"
-                      >
-                        <span className="scale-75">{Icons.trash}</span>
-                      </button>
-                    )}
-                    <button
-                      onClick={() => handleUpdateSet(activeExercise.id, set.id, { completed: !set.completed })}
-                      className="w-12 h-12 rounded-xl flex items-center justify-center transition-all"
-                      style={{
-                        backgroundColor: set.completed ? '#10b981' : theme.bg.medium,
-                        color: set.completed ? 'white' : 'gray'
-                      }}
-                    >
-                      {set.completed ? Icons.check : <span className="w-5 h-5 rounded border-2 border-gray-500"></span>}
-                    </button>
+          {isCardio ? (
+            /* CARDIO INTERFACE */
+            <div className="space-y-4">
+              {/* Time display (auto from timer) */}
+              <div className="rounded-2xl p-5 text-center" style={{ backgroundColor: theme.bg.dark, border: `1px solid ${theme.bg.medium}` }}>
+                <p className="text-gray-400 text-sm font-medium uppercase mb-2">⏱️ Время</p>
+                <p className="text-4xl font-bold font-mono" style={{ color: theme.accentLight }}>{formatTime(currentTime)}</p>
+                <p className="text-gray-500 text-xs mt-1">Автоматически из таймера</p>
+              </div>
+              
+              {/* Distance */}
+              <div className="rounded-2xl p-4" style={{ backgroundColor: theme.bg.dark, border: `1px solid ${theme.bg.medium}` }}>
+                <p className="text-gray-400 text-sm font-medium uppercase mb-3 text-center">📏 Дистанция (км)</p>
+                <div className="flex items-center rounded-xl" style={{ backgroundColor: theme.bg.medium }}>
+                  <button
+                    onClick={() => handleUpdateCardioData({ distance: Math.max(0, (cardioData.distance || 0) - 0.1) })}
+                    className="w-14 h-14 flex items-center justify-center rounded-l-xl flex-shrink-0"
+                    style={{ color: theme.accent }}
+                  >
+                    {Icons.minus}
+                  </button>
+                  <div className="flex-1 flex justify-center">
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      step="0.1"
+                      value={cardioData.distance?.toFixed(1) || '0.0'}
+                      onChange={(e) => handleUpdateCardioData({ distance: parseFloat(e.target.value) || 0 })}
+                      className="w-20 bg-transparent text-3xl font-bold outline-none"
+                      style={{ textAlign: 'center' }}
+                    />
                   </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  {/* Reps */}
-                  <div>
-                    <label className="text-gray-500 text-xs font-medium block mb-1.5 text-center uppercase">Повторы</label>
-                    <div className="flex items-center rounded-xl" style={{ backgroundColor: theme.bg.medium }}>
-                      <button
-                        onClick={() => handleUpdateSet(activeExercise.id, set.id, { reps: Math.max(0, set.reps - 1) })}
-                        className="w-12 h-12 flex items-center justify-center rounded-l-xl flex-shrink-0"
-                        style={{ color: theme.accent }}
-                      >
-                        {Icons.minus}
-                      </button>
-                      <div className="input-wrap">
-                        <input
-                          type="number"
-                          inputMode="numeric"
-                          value={set.reps}
-                          onChange={(e) => handleUpdateSet(activeExercise.id, set.id, { reps: parseInt(e.target.value) || 0 })}
-                          className="w-12 max-w-12 bg-transparent text-center text-xl font-bold outline-none"
-                          style={{ textAlign: 'center' }}
-                        />
-                      </div>
-                      <button
-                        onClick={() => handleUpdateSet(activeExercise.id, set.id, { reps: set.reps + 1 })}
-                        className="w-12 h-12 flex items-center justify-center rounded-r-xl flex-shrink-0"
-                        style={{ color: theme.accent }}
-                      >
-                        {Icons.plus}
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Weight */}
-                  <div>
-                    <label className="text-gray-500 text-xs font-medium block mb-1.5 text-center uppercase">Вес (кг)</label>
-                    <div className="flex items-center rounded-xl" style={{ backgroundColor: theme.bg.medium }}>
-                      <button
-                        onClick={() => handleUpdateSet(activeExercise.id, set.id, { weight: Math.max(0, set.weight - 2.5) })}
-                        className="w-12 h-12 flex items-center justify-center text-orange-400 rounded-l-xl flex-shrink-0"
-                      >
-                        {Icons.minus}
-                      </button>
-                      <div className="input-wrap">
-                        <input
-                          type="number"
-                          inputMode="decimal"
-                          step="0.5"
-                          value={set.weight}
-                          onChange={(e) => handleUpdateSet(activeExercise.id, set.id, { weight: parseFloat(e.target.value) || 0 })}
-                          className="w-14 max-w-14 bg-transparent text-center text-xl font-bold outline-none"
-                          style={{ textAlign: 'center' }}
-                        />
-                      </div>
-                      <button
-                        onClick={() => handleUpdateSet(activeExercise.id, set.id, { weight: set.weight + 2.5 })}
-                        className="w-12 h-12 flex items-center justify-center text-orange-400 rounded-r-xl flex-shrink-0"
-                      >
-                        {Icons.plus}
-                      </button>
-                    </div>
-                  </div>
+                  <button
+                    onClick={() => handleUpdateCardioData({ distance: (cardioData.distance || 0) + 0.1 })}
+                    className="w-14 h-14 flex items-center justify-center rounded-r-xl flex-shrink-0"
+                    style={{ color: theme.accent }}
+                  >
+                    {Icons.plus}
+                  </button>
                 </div>
               </div>
-            ))}
-          </div>
+              
+              {/* Speed (calculated) */}
+              <div className="rounded-2xl p-5 text-center" style={{ backgroundColor: theme.bg.dark, border: `1px solid ${theme.bg.medium}` }}>
+                <p className="text-gray-400 text-sm font-medium uppercase mb-2">⚡ Скорость</p>
+                <p className="text-3xl font-bold" style={{ color: theme.accentLight }}>{calculatedSpeed} <span className="text-lg text-gray-400">км/ч</span></p>
+                <p className="text-gray-500 text-xs mt-1">Рассчитывается автоматически</p>
+              </div>
+              
+              {/* Level */}
+              <div className="rounded-2xl p-4" style={{ backgroundColor: theme.bg.dark, border: `1px solid ${theme.bg.medium}` }}>
+                <p className="text-gray-400 text-sm font-medium uppercase mb-2 text-center">📊 Уровень нагрузки: {cardioData.level || 1}</p>
+                <input
+                  type="range"
+                  min="1"
+                  max="20"
+                  value={cardioData.level || 1}
+                  onChange={(e) => handleUpdateCardioData({ level: parseInt(e.target.value) })}
+                  className="w-full h-3 rounded-full appearance-none cursor-pointer"
+                  style={{ 
+                    background: `linear-gradient(90deg, ${theme.accent} ${((cardioData.level || 1) / 20) * 100}%, ${theme.bg.medium} ${((cardioData.level || 1) / 20) * 100}%)`
+                  }}
+                />
+                <div className="flex justify-between text-xs text-gray-500 mt-1">
+                  <span>1</span>
+                  <span>10</span>
+                  <span>20</span>
+                </div>
+              </div>
+              
+              {/* Calories */}
+              <div className="rounded-2xl p-4" style={{ backgroundColor: theme.bg.dark, border: `1px solid ${theme.bg.medium}` }}>
+                <p className="text-gray-400 text-sm font-medium uppercase mb-3 text-center">🔥 Калории</p>
+                <div className="flex items-center rounded-xl" style={{ backgroundColor: theme.bg.medium }}>
+                  <button
+                    onClick={() => handleUpdateCardioData({ calories: Math.max(0, (cardioData.calories || 0) - 10) })}
+                    className="w-14 h-14 flex items-center justify-center rounded-l-xl flex-shrink-0 text-orange-400"
+                  >
+                    {Icons.minus}
+                  </button>
+                  <div className="flex-1 flex justify-center">
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      value={cardioData.calories || 0}
+                      onChange={(e) => handleUpdateCardioData({ calories: parseInt(e.target.value) || 0 })}
+                      className="w-20 bg-transparent text-3xl font-bold outline-none text-orange-400"
+                      style={{ textAlign: 'center' }}
+                    />
+                  </div>
+                  <button
+                    onClick={() => handleUpdateCardioData({ calories: (cardioData.calories || 0) + 10 })}
+                    className="w-14 h-14 flex items-center justify-center rounded-r-xl flex-shrink-0 text-orange-400"
+                  >
+                    {Icons.plus}
+                  </button>
+                </div>
+              </div>
+              
+              {/* Mark as completed */}
+              <div className="rounded-2xl p-4" style={{ backgroundColor: theme.bg.dark, border: `1px solid ${theme.bg.medium}` }}>
+                <button
+                  onClick={() => handleUpdateCardioData({ completed: !cardioData.completed } as any)}
+                  className="w-full py-4 rounded-xl font-bold flex items-center justify-center gap-3 transition-all"
+                  style={{
+                    backgroundColor: cardioData.completed ? '#10b981' : theme.bg.medium,
+                    color: cardioData.completed ? 'white' : 'gray'
+                  }}
+                >
+                  {cardioData.completed ? Icons.check : <span className="w-6 h-6 rounded-md border-2 border-gray-500"></span>}
+                  <span>{cardioData.completed ? 'Выполнено ✓' : 'Отметить выполненным'}</span>
+                </button>
+              </div>
+            </div>
+          ) : (
+            /* STRENGTH INTERFACE */
+            <>
+              <div className="space-y-3">
+                {activeExercise.sets.map((set, index) => (
+                  <div
+                    key={set.id}
+                    className="rounded-xl p-4 transition-all"
+                    style={{
+                      backgroundColor: set.completed ? 'rgba(16, 185, 129, 0.1)' : theme.bg.dark,
+                      border: `1px solid ${set.completed ? 'rgba(16, 185, 129, 0.3)' : theme.bg.medium}`
+                    }}
+                  >
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-gray-400 font-bold">Подход {index + 1}</span>
+                      <div className="flex items-center">
+                        {activeExercise.sets.length > 1 && (
+                          <button
+                            onClick={() => {
+                              showConfirm({
+                                title: 'Удалить подход?',
+                                message: `Подход ${index + 1} будет удалён.`,
+                                confirmText: 'Удалить',
+                                confirmColor: 'red',
+                                onConfirm: () => {
+                                  hideConfirm();
+                                  handleDeleteSet(activeExercise.id, set.id);
+                                },
+                              });
+                            }}
+                            className="text-gray-600 active:text-red-500 p-2 mr-4"
+                          >
+                            <span className="scale-75">{Icons.trash}</span>
+                          </button>
+                        )}
+                        <button
+                          onClick={() => handleUpdateSet(activeExercise.id, set.id, { completed: !set.completed })}
+                          className="w-12 h-12 rounded-xl flex items-center justify-center transition-all"
+                          style={{
+                            backgroundColor: set.completed ? '#10b981' : theme.bg.medium,
+                            color: set.completed ? 'white' : 'gray'
+                          }}
+                        >
+                          {set.completed ? Icons.check : <span className="w-5 h-5 rounded border-2 border-gray-500"></span>}
+                        </button>
+                      </div>
+                    </div>
 
-          <button
-            onClick={() => handleAddSet(activeExercise.id)}
-            className="w-full mt-3 py-3 border-2 border-dashed rounded-xl text-gray-400 font-semibold flex items-center justify-center gap-2 text-sm"
-            style={{ borderColor: theme.bg.light }}
-          >
-            {Icons.plus}
-            Добавить подход
-          </button>
+                    <div className="grid grid-cols-2 gap-3">
+                      {/* Reps */}
+                      <div>
+                        <label className="text-gray-500 text-xs font-medium block mb-1.5 text-center uppercase">Повторы</label>
+                        <div className="flex items-center rounded-xl" style={{ backgroundColor: theme.bg.medium }}>
+                          <button
+                            onClick={() => handleUpdateSet(activeExercise.id, set.id, { reps: Math.max(0, set.reps - 1) })}
+                            className="w-12 h-12 flex items-center justify-center rounded-l-xl flex-shrink-0"
+                            style={{ color: theme.accent }}
+                          >
+                            {Icons.minus}
+                          </button>
+                          <div className="input-wrap">
+                            <input
+                              type="number"
+                              inputMode="numeric"
+                              value={set.reps}
+                              onChange={(e) => handleUpdateSet(activeExercise.id, set.id, { reps: parseInt(e.target.value) || 0 })}
+                              className="w-12 max-w-12 bg-transparent text-center text-xl font-bold outline-none"
+                              style={{ textAlign: 'center' }}
+                            />
+                          </div>
+                          <button
+                            onClick={() => handleUpdateSet(activeExercise.id, set.id, { reps: set.reps + 1 })}
+                            className="w-12 h-12 flex items-center justify-center rounded-r-xl flex-shrink-0"
+                            style={{ color: theme.accent }}
+                          >
+                            {Icons.plus}
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Weight */}
+                      <div>
+                        <label className="text-gray-500 text-xs font-medium block mb-1.5 text-center uppercase">Вес (кг)</label>
+                        <div className="flex items-center rounded-xl" style={{ backgroundColor: theme.bg.medium }}>
+                          <button
+                            onClick={() => handleUpdateSet(activeExercise.id, set.id, { weight: Math.max(0, set.weight - 2.5) })}
+                            className="w-12 h-12 flex items-center justify-center text-orange-400 rounded-l-xl flex-shrink-0"
+                          >
+                            {Icons.minus}
+                          </button>
+                          <div className="input-wrap">
+                            <input
+                              type="number"
+                              inputMode="decimal"
+                              step="0.5"
+                              value={set.weight}
+                              onChange={(e) => handleUpdateSet(activeExercise.id, set.id, { weight: parseFloat(e.target.value) || 0 })}
+                              className="w-14 max-w-14 bg-transparent text-center text-xl font-bold outline-none"
+                              style={{ textAlign: 'center' }}
+                            />
+                          </div>
+                          <button
+                            onClick={() => handleUpdateSet(activeExercise.id, set.id, { weight: set.weight + 2.5 })}
+                            className="w-12 h-12 flex items-center justify-center text-orange-400 rounded-r-xl flex-shrink-0"
+                          >
+                            {Icons.plus}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <button
+                onClick={() => handleAddSet(activeExercise.id)}
+                className="w-full mt-3 py-3 border-2 border-dashed rounded-xl text-gray-400 font-semibold flex items-center justify-center gap-2 text-sm"
+                style={{ borderColor: theme.bg.light }}
+              >
+                {Icons.plus}
+                Добавить подход
+              </button>
+            </>
+          )}
         </div>
 
         {/* Bottom button */}
@@ -1804,29 +1972,34 @@ export default function App() {
                 })}
               </div>
 
-              <p className="text-gray-500 text-sm font-medium mb-2">Добавить:</p>
-              <div className="space-y-2 max-h-72 overflow-auto">
-                {data.templates
-                  .filter(t => !newDayExercises.includes(t.id))
-                  .map(t => {
-                    const cat = CATEGORY_INFO[t.category];
-                    return (
-                      <button
-                        key={t.id}
-                        onClick={() => setNewDayExercises(prev => [...prev, t.id])}
-                        className="w-full flex items-center gap-3 rounded-xl px-4 py-3 text-left"
-                        style={{ backgroundColor: theme.bg.dark, border: `1px solid ${theme.bg.light}` }}
-                      >
-                        <span
-                          className="text-xs font-bold px-2 py-0.5 rounded"
-                          style={{ backgroundColor: cat.bg, color: cat.color }}
+              <p className="text-gray-500 text-sm font-medium mb-2">Добавить ({data.templates.filter(t => !newDayExercises.includes(t.id)).length}):</p>
+              <div className="space-y-2 pb-24">
+                {data.templates.filter(t => !newDayExercises.includes(t.id)).length === 0 ? (
+                  <p className="text-gray-500 text-center py-4">Все упражнения добавлены</p>
+                ) : (
+                  data.templates
+                    .filter(t => !newDayExercises.includes(t.id))
+                    .map(t => {
+                      const cat = CATEGORY_INFO[t.category];
+                      return (
+                        <button
+                          key={t.id}
+                          onClick={() => setNewDayExercises(prev => [...prev, t.id])}
+                          className="w-full flex items-center gap-3 rounded-xl px-4 py-4 text-left active:scale-[0.98] transition-transform"
+                          style={{ backgroundColor: theme.bg.medium, border: `1px solid ${theme.bg.light}` }}
                         >
-                          {t.machineNumber}
-                        </span>
-                        <span className="font-medium">{t.name}</span>
-                      </button>
-                    );
-                  })}
+                          <span className="text-green-500">{Icons.plus}</span>
+                          <span
+                            className="text-xs font-bold px-2 py-0.5 rounded"
+                            style={{ backgroundColor: cat.bg, color: cat.color }}
+                          >
+                            {t.machineNumber}
+                          </span>
+                          <span className="font-medium flex-1">{t.name}</span>
+                        </button>
+                      );
+                    })
+                )}
               </div>
             </div>
           </div>
@@ -1856,10 +2029,13 @@ export default function App() {
   const handleSaveTemplate = () => {
     if (!newTemplate.name.trim()) return;
     
+    // Automatically set trackingType based on category
+    const trackingType = newTemplate.category === 'cardio' ? 'cardio' : 'strength';
+    
     if (editingTemplate) {
-      setData(prev => updateTemplate(prev, editingTemplate.id, newTemplate));
+      setData(prev => updateTemplate(prev, editingTemplate.id, { ...newTemplate, trackingType }));
     } else {
-      setData(prev => createTemplate(prev, newTemplate));
+      setData(prev => createTemplate(prev, { ...newTemplate, trackingType }));
     }
     
     setEditingTemplate(null);
@@ -2060,23 +2236,29 @@ export default function App() {
               <label className="text-gray-400 text-sm font-medium block mb-3">Категория</label>
               <div className="grid grid-cols-3 gap-2">
                 {[
-                  { id: 'cardio', label: 'Кардио' },
-                  { id: 'machine', label: 'Тренажёр' },
-                  { id: 'free_weights', label: 'Св. веса' },
+                  { id: 'cardio', label: 'Кардио', emoji: '🏃' },
+                  { id: 'machine', label: 'Тренажёр', emoji: '🏋️' },
+                  { id: 'free_weights', label: 'Св. веса', emoji: '💪' },
                 ].map(c => (
                   <button
                     key={c.id}
                     onClick={() => setNewTemplate(prev => ({ ...prev, category: c.id as ExerciseCategory }))}
-                    className="py-4 rounded-xl font-bold transition-all"
+                    className="py-4 rounded-xl font-bold transition-all flex flex-col items-center gap-1"
                     style={{
                       backgroundColor: newTemplate.category === c.id ? theme.accent : theme.bg.medium,
                       color: newTemplate.category === c.id ? 'white' : 'gray'
                     }}
                   >
-                    {c.label}
+                    <span className="text-xl">{c.emoji}</span>
+                    <span className="text-sm">{c.label}</span>
                   </button>
                 ))}
               </div>
+              <p className="text-gray-500 text-xs mt-2 text-center">
+                {newTemplate.category === 'cardio' 
+                  ? '⏱️ Кардио: время, дистанция, скорость, уровень'
+                  : '💪 Силовое: подходы, повторения, вес'}
+              </p>
             </div>
           </div>
         </div>
@@ -2703,10 +2885,14 @@ export default function App() {
         {showFinishRunModal && (() => {
           // Calculate estimated values for display
           const currentWeight = getCurrentWeight(data);
-          const currentTime = getCurrentRunTime(run);
+          const currentRunTime = getCurrentRunTime(run);
           const distance = parseFloat(finishRunDistance) || 0;
-          const estimatedCalories = currentWeight > 0 ? calculateRunCalories(run.runType, currentWeight, currentTime) : 0;
+          const estimatedCalories = currentWeight > 0 ? calculateRunCalories(run.runType, currentWeight, currentRunTime) : 0;
           const estimatedSteps = estimateSteps(distance, run.runType);
+          
+          // Get display values
+          const displayCalories = finishRunCalories || estimatedCalories.toString();
+          const displaySteps = finishRunSteps || estimatedSteps.toString();
           
           return (
             <div className="fixed inset-0 bg-black/80 z-[60] flex items-end justify-center">
@@ -2714,7 +2900,7 @@ export default function App() {
                 className="w-full max-w-lg rounded-t-3xl p-5 animate-slide-up overflow-auto max-h-[90vh]"
                 style={{ backgroundColor: theme.bg.dark }}
               >
-                <h3 className="text-xl font-bold text-center mb-4">Завершить</h3>
+                <h3 className="text-xl font-bold text-center mb-4">Завершить пробежку</h3>
                 
                 {/* Distance */}
                 <div className="mb-4">
@@ -2759,13 +2945,13 @@ export default function App() {
                 <div className="grid grid-cols-2 gap-3 mb-4">
                   {/* Calories */}
                   <div>
-                    <label className="text-gray-400 text-xs font-medium block mb-1 text-center">Калории (ккал)</label>
+                    <label className="text-gray-400 text-xs font-medium block mb-1 text-center">🔥 Калории</label>
                     <div className="flex items-center rounded-xl" style={{ backgroundColor: theme.bg.medium }}>
                       <button
-                        onClick={() => setFinishRunCalories(prev => {
-                          const val = parseInt(prev) || estimatedCalories;
-                          return Math.max(0, val - 10).toString();
-                        })}
+                        onClick={() => {
+                          const current = parseInt(finishRunCalories) || estimatedCalories;
+                          setFinishRunCalories(Math.max(0, current - 10).toString());
+                        }}
                         className="w-10 h-12 flex items-center justify-center rounded-l-xl text-orange-400"
                       >
                         {Icons.minus}
@@ -2774,18 +2960,17 @@ export default function App() {
                         <input
                           type="number"
                           inputMode="numeric"
-                          value={finishRunCalories}
+                          value={displayCalories}
                           onChange={(e) => setFinishRunCalories(e.target.value)}
-                          placeholder={estimatedCalories.toString()}
                           className="w-16 bg-transparent text-lg font-bold outline-none text-orange-400"
                           style={{ textAlign: 'center' }}
                         />
                       </div>
                       <button
-                        onClick={() => setFinishRunCalories(prev => {
-                          const val = parseInt(prev) || estimatedCalories;
-                          return (val + 10).toString();
-                        })}
+                        onClick={() => {
+                          const current = parseInt(finishRunCalories) || estimatedCalories;
+                          setFinishRunCalories((current + 10).toString());
+                        }}
                         className="w-10 h-12 flex items-center justify-center rounded-r-xl text-orange-400"
                       >
                         {Icons.plus}
@@ -2795,13 +2980,13 @@ export default function App() {
                   
                   {/* Steps */}
                   <div>
-                    <label className="text-gray-400 text-xs font-medium block mb-1 text-center">Шаги</label>
+                    <label className="text-gray-400 text-xs font-medium block mb-1 text-center">👟 Шаги</label>
                     <div className="flex items-center rounded-xl" style={{ backgroundColor: theme.bg.medium }}>
                       <button
-                        onClick={() => setFinishRunSteps(prev => {
-                          const val = parseInt(prev) || estimatedSteps;
-                          return Math.max(0, val - 100).toString();
-                        })}
+                        onClick={() => {
+                          const current = parseInt(finishRunSteps) || estimatedSteps;
+                          setFinishRunSteps(Math.max(0, current - 100).toString());
+                        }}
                         className="w-10 h-12 flex items-center justify-center rounded-l-xl"
                         style={{ color: theme.accent }}
                       >
@@ -2811,18 +2996,17 @@ export default function App() {
                         <input
                           type="number"
                           inputMode="numeric"
-                          value={finishRunSteps}
+                          value={displaySteps}
                           onChange={(e) => setFinishRunSteps(e.target.value)}
-                          placeholder={estimatedSteps.toString()}
                           className="w-16 bg-transparent text-lg font-bold outline-none"
                           style={{ textAlign: 'center', color: theme.accentLight }}
                         />
                       </div>
                       <button
-                        onClick={() => setFinishRunSteps(prev => {
-                          const val = parseInt(prev) || estimatedSteps;
-                          return (val + 100).toString();
-                        })}
+                        onClick={() => {
+                          const current = parseInt(finishRunSteps) || estimatedSteps;
+                          setFinishRunSteps((current + 100).toString());
+                        }}
                         className="w-10 h-12 flex items-center justify-center rounded-r-xl"
                         style={{ color: theme.accent }}
                       >
@@ -3289,18 +3473,41 @@ export default function App() {
             </div>
           </div>
 
-          {/* Estimated Calories */}
-          {estimatedCalories > 0 && (
-            <div className="rounded-2xl p-4 mb-4 flex items-center gap-4" style={{ backgroundColor: theme.bg.dark, border: `1px solid ${theme.bg.medium}` }}>
-              <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-orange-500/20 text-orange-500">
-                {Icons.fire}
+          {/* Editable Calories */}
+          <div className="rounded-2xl p-4 mb-4" style={{ backgroundColor: theme.bg.dark, border: `1px solid ${theme.bg.medium}` }}>
+            <label className="text-gray-400 text-sm font-medium block mb-3">🔥 Сожжено калорий</label>
+            <div className="flex items-center rounded-xl" style={{ backgroundColor: theme.bg.medium }}>
+              <button
+                onClick={() => {
+                  const current = parseInt(finishWorkoutCalories) || estimatedCalories;
+                  setFinishWorkoutCalories(Math.max(0, current - 5).toString());
+                }}
+                className="w-14 h-14 flex items-center justify-center rounded-l-xl text-orange-400"
+              >
+                {Icons.minus}
+              </button>
+              <div className="flex-1 flex justify-center">
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  value={finishWorkoutCalories || estimatedCalories.toString()}
+                  onChange={(e) => setFinishWorkoutCalories(e.target.value)}
+                  className="w-20 bg-transparent text-2xl font-bold outline-none text-orange-400"
+                  style={{ textAlign: 'center' }}
+                />
               </div>
-              <div>
-                <p className="text-gray-400 text-sm">Примерно сожжено</p>
-                <p className="text-xl font-bold text-orange-500">{estimatedCalories} ккал</p>
-              </div>
+              <button
+                onClick={() => {
+                  const current = parseInt(finishWorkoutCalories) || estimatedCalories;
+                  setFinishWorkoutCalories((current + 5).toString());
+                }}
+                className="w-14 h-14 flex items-center justify-center rounded-r-xl text-orange-400"
+              >
+                {Icons.plus}
+              </button>
             </div>
-          )}
+            <p className="text-gray-500 text-xs text-center mt-2">Можно скорректировать вручную</p>
+          </div>
 
           {/* Intensity */}
           <div className="rounded-2xl p-4 mb-4" style={{ backgroundColor: theme.bg.dark, border: `1px solid ${theme.bg.medium}` }}>

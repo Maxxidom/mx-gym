@@ -1,4 +1,4 @@
-import { AppData, ExerciseTemplate, TrainingDay, Workout, WorkoutExercise, WorkoutSet, RunSession, UserProfile, WorkoutIntensity } from './types';
+import { AppData, ExerciseTemplate, TrainingDay, Workout, WorkoutExercise, WorkoutSet, CardioSet, RunSession, UserProfile, WorkoutIntensity } from './types';
 
 const STORAGE_KEY = 'gym_app_data';
 
@@ -112,21 +112,24 @@ const createWorkoutExercise = (
 // Демо данные
 const createDemoData = (): AppData => {
   const templates: ExerciseTemplate[] = [
-    // Кардио
-    { id: 't1', machineNumber: 'C01', name: 'Беговая дорожка', description: 'Кардио разминка', category: 'cardio', createdAt: new Date().toISOString() },
-    { id: 't2', machineNumber: 'C02', name: 'Велотренажёр', description: 'Кардио', category: 'cardio', createdAt: new Date().toISOString() },
-    // Тренажёры
-    { id: 't3', machineNumber: 'M01', name: 'Жим ногами', description: 'Ноги, квадрицепсы', category: 'machine', createdAt: new Date().toISOString() },
-    { id: 't4', machineNumber: 'M02', name: 'Сгибание ног', description: 'Бицепс бедра', category: 'machine', createdAt: new Date().toISOString() },
-    { id: 't5', machineNumber: 'M03', name: 'Тяга верхнего блока', description: 'Широчайшие, спина', category: 'machine', createdAt: new Date().toISOString() },
-    { id: 't6', machineNumber: 'M04', name: 'Жим от груди', description: 'Грудные мышцы', category: 'machine', createdAt: new Date().toISOString() },
-    { id: 't7', machineNumber: 'M05', name: 'Бабочка', description: 'Грудные, изоляция', category: 'machine', createdAt: new Date().toISOString() },
-    // Свободные веса
-    { id: 't8', machineNumber: 'F01', name: 'Жим лёжа', description: 'Штанга, грудь', category: 'free_weights', createdAt: new Date().toISOString() },
-    { id: 't9', machineNumber: 'F02', name: 'Приседания', description: 'Штанга, ноги', category: 'free_weights', createdAt: new Date().toISOString() },
-    { id: 't10', machineNumber: 'F03', name: 'Подъём на бицепс', description: 'Гантели', category: 'free_weights', createdAt: new Date().toISOString() },
-    { id: 't11', machineNumber: 'F04', name: 'Французский жим', description: 'Гантели, трицепс', category: 'free_weights', createdAt: new Date().toISOString() },
-    { id: 't12', machineNumber: 'F05', name: 'Тяга гантели', description: 'Спина, широчайшие', category: 'free_weights', createdAt: new Date().toISOString() },
+    // Кардио (trackingType: 'cardio' - время, дистанция, скорость, уровень)
+    { id: 't1', machineNumber: 'C01', name: 'Беговая дорожка', description: 'Кардио разминка', category: 'cardio', trackingType: 'cardio', createdAt: new Date().toISOString() },
+    { id: 't2', machineNumber: 'C02', name: 'Велотренажёр', description: 'Кардио', category: 'cardio', trackingType: 'cardio', createdAt: new Date().toISOString() },
+    { id: 't13', machineNumber: 'C03', name: 'Эллипсоид', description: 'Кардио, всё тело', category: 'cardio', trackingType: 'cardio', createdAt: new Date().toISOString() },
+    { id: 't14', machineNumber: 'C04', name: 'Степпер', description: 'Кардио, ноги', category: 'cardio', trackingType: 'cardio', createdAt: new Date().toISOString() },
+    { id: 't15', machineNumber: 'C05', name: 'Гребной тренажёр', description: 'Кардио, спина, руки', category: 'cardio', trackingType: 'cardio', createdAt: new Date().toISOString() },
+    // Тренажёры (trackingType: 'strength' - подходы, повторы, вес)
+    { id: 't3', machineNumber: 'M01', name: 'Жим ногами', description: 'Ноги, квадрицепсы', category: 'machine', trackingType: 'strength', createdAt: new Date().toISOString() },
+    { id: 't4', machineNumber: 'M02', name: 'Сгибание ног', description: 'Бицепс бедра', category: 'machine', trackingType: 'strength', createdAt: new Date().toISOString() },
+    { id: 't5', machineNumber: 'M03', name: 'Тяга верхнего блока', description: 'Широчайшие, спина', category: 'machine', trackingType: 'strength', createdAt: new Date().toISOString() },
+    { id: 't6', machineNumber: 'M04', name: 'Жим от груди', description: 'Грудные мышцы', category: 'machine', trackingType: 'strength', createdAt: new Date().toISOString() },
+    { id: 't7', machineNumber: 'M05', name: 'Бабочка', description: 'Грудные, изоляция', category: 'machine', trackingType: 'strength', createdAt: new Date().toISOString() },
+    // Свободные веса (trackingType: 'strength' - подходы, повторы, вес)
+    { id: 't8', machineNumber: 'F01', name: 'Жим лёжа', description: 'Штанга, грудь', category: 'free_weights', trackingType: 'strength', createdAt: new Date().toISOString() },
+    { id: 't9', machineNumber: 'F02', name: 'Приседания', description: 'Штанга, ноги', category: 'free_weights', trackingType: 'strength', createdAt: new Date().toISOString() },
+    { id: 't10', machineNumber: 'F03', name: 'Подъём на бицепс', description: 'Гантели', category: 'free_weights', trackingType: 'strength', createdAt: new Date().toISOString() },
+    { id: 't11', machineNumber: 'F04', name: 'Французский жим', description: 'Гантели, трицепс', category: 'free_weights', trackingType: 'strength', createdAt: new Date().toISOString() },
+    { id: 't12', machineNumber: 'F05', name: 'Тяга гантели', description: 'Спина, широчайшие', category: 'free_weights', trackingType: 'strength', createdAt: new Date().toISOString() },
   ];
 
   const trainingDays: TrainingDay[] = [
@@ -344,6 +347,12 @@ const migrateExercise = (e: any): WorkoutExercise => ({
   segments: e.segments || [],
 });
 
+// Migrate old template to include trackingType
+const migrateTemplate = (t: any): ExerciseTemplate => ({
+  ...t,
+  trackingType: t.trackingType || (t.category === 'cardio' ? 'cardio' : 'strength'),
+});
+
 export const loadData = (): AppData => {
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
@@ -359,6 +368,8 @@ export const loadData = (): AppData => {
       if (!data.userProfile) {
         data.userProfile = defaultUserProfile;
       }
+      // Migrate templates to include trackingType
+      data.templates = data.templates.map(migrateTemplate);
       // Migrate workouts to include timer fields
       data.workouts = data.workouts.map((w: any) => ({
         ...w,
@@ -519,6 +530,42 @@ export const addSetToExercise = (data: AppData, workoutId: string, exerciseId: s
               weight: lastSet?.weight || 0,
               completed: false,
             }],
+          };
+        }),
+      };
+    }),
+  };
+};
+
+// Update cardio data for an exercise
+export const updateCardioData = (
+  data: AppData,
+  workoutId: string,
+  exerciseId: string,
+  updates: Partial<CardioSet>
+): AppData => {
+  return {
+    ...data,
+    workouts: data.workouts.map(w => {
+      if (w.id !== workoutId) return w;
+      return {
+        ...w,
+        exercises: w.exercises.map(e => {
+          if (e.id !== exerciseId) return e;
+          return {
+            ...e,
+            cardioData: e.cardioData 
+              ? { ...e.cardioData, ...updates }
+              : {
+                  id: generateId(),
+                  duration: 0,
+                  distance: 0,
+                  speed: 0,
+                  level: 1,
+                  calories: 0,
+                  completed: false,
+                  ...updates,
+                },
           };
         }),
       };
