@@ -12,6 +12,16 @@ const defaultUserProfile: UserProfile = {
   height: 0,
 };
 
+// Check if this is first launch (no saved data)
+export const isFirstLaunch = (): boolean => {
+  return !localStorage.getItem(STORAGE_KEY);
+};
+
+// Complete onboarding
+export const completeOnboarding = (data: AppData): AppData => {
+  return { ...data, onboardingCompleted: true };
+};
+
 // MET values for running based on type
 const RUN_MET: Record<string, number> = {
   walking: 4.0,
@@ -1218,4 +1228,172 @@ export const completeRunWithCalories = (
       };
     }),
   };
+};
+
+// ==================== EXPORT / IMPORT ====================
+
+export interface BodyWeightEntry {
+  id: string;
+  date: string;
+  weight: number;
+  createdAt: string;
+}
+
+export interface ExportData {
+  version: string;
+  type: 'templates' | 'programs' | 'all' | 'bodyWeight';
+  templates?: ExerciseTemplate[];
+  trainingDays?: TrainingDay[];
+  bodyWeight?: BodyWeightEntry[];
+  exportDate: string;
+}
+
+export const exportTemplates = (data: AppData): string => {
+  const exportData: ExportData = {
+    version: '1.0',
+    type: 'templates',
+    templates: data.templates,
+    exportDate: new Date().toISOString(),
+  };
+  return JSON.stringify(exportData, null, 2);
+};
+
+export const exportPrograms = (data: AppData): string => {
+  const exportData: ExportData = {
+    version: '1.0',
+    type: 'programs',
+    trainingDays: data.trainingDays,
+    templates: data.templates, // Include templates for reference
+    exportDate: new Date().toISOString(),
+  };
+  return JSON.stringify(exportData, null, 2);
+};
+
+export const exportAll = (data: AppData): string => {
+  const exportData: ExportData = {
+    version: '1.0',
+    type: 'all',
+    templates: data.templates,
+    trainingDays: data.trainingDays,
+    exportDate: new Date().toISOString(),
+  };
+  return JSON.stringify(exportData, null, 2);
+};
+
+export const exportBodyWeight = (data: AppData): string => {
+  const exportData: ExportData = {
+    version: '1.0',
+    type: 'bodyWeight',
+    bodyWeight: data.bodyWeight,
+    exportDate: new Date().toISOString(),
+  };
+  return JSON.stringify(exportData, null, 2);
+};
+
+export const importData = (
+  data: AppData, 
+  jsonString: string, 
+  mode: 'add' | 'replace'
+): { success: boolean; data?: AppData; error?: string; imported?: { templates: number; programs: number } } => {
+  try {
+    const importedData = JSON.parse(jsonString) as ExportData;
+    
+    if (!importedData.version || !importedData.type) {
+      return { success: false, error: 'Неверный формат файла' };
+    }
+    
+    let newData = { ...data };
+    let importedTemplates = 0;
+    let importedPrograms = 0;
+    
+    // Import templates
+    if (importedData.templates && importedData.templates.length > 0) {
+      if (mode === 'replace') {
+        newData.templates = importedData.templates;
+        importedTemplates = importedData.templates.length;
+      } else {
+        // Add mode - check for duplicates by machineNumber
+        const existingNumbers = new Set(data.templates.map(t => t.machineNumber));
+        const newTemplates = importedData.templates.filter(t => !existingNumbers.has(t.machineNumber));
+        // Generate new IDs for imported templates to avoid conflicts
+        newTemplates.forEach(t => {
+          t.id = generateId();
+        });
+        newData.templates = [...data.templates, ...newTemplates];
+        importedTemplates = newTemplates.length;
+      }
+    }
+    
+    // Import body weight
+    if (importedData.bodyWeight && importedData.bodyWeight.length > 0) {
+      if (mode === 'replace') {
+        newData.bodyWeight = importedData.bodyWeight.map(bw => ({
+          ...bw,
+          id: generateId(),
+        }));
+      } else {
+        // Add mode - check for duplicates by date
+        const existingDates = new Set(data.bodyWeight.map(bw => bw.date));
+        const newEntries = importedData.bodyWeight
+          .filter(bw => !existingDates.has(bw.date))
+          .map(bw => ({
+            ...bw,
+            id: generateId(),
+          }));
+        newData.bodyWeight = [...data.bodyWeight, ...newEntries];
+      }
+    }
+    
+    // Import programs
+    if (importedData.trainingDays && importedData.trainingDays.length > 0) {
+      // Create a map from old template IDs to new template IDs based on machineNumber
+      const templateIdMap = new Map<string, string>();
+      if (importedData.templates) {
+        importedData.templates.forEach(oldT => {
+          const newT = newData.templates.find(t => t.machineNumber === oldT.machineNumber);
+          if (newT) {
+            templateIdMap.set(oldT.id, newT.id);
+          }
+        });
+      }
+      
+      if (mode === 'replace') {
+        // Update exercise IDs in training days
+        const updatedDays = importedData.trainingDays.map(day => ({
+          ...day,
+          id: generateId(),
+          exerciseIds: day.exerciseIds.map(id => templateIdMap.get(id) || id).filter(id => 
+            newData.templates.some(t => t.id === id)
+          ),
+        }));
+        
+        newData.trainingDays = updatedDays;
+        importedPrograms = updatedDays.length;
+      } else {
+        // Add mode - check for duplicates by name
+        const existingNames = new Set(data.trainingDays.map(d => d.name));
+        
+        const newDays = importedData.trainingDays
+          .filter(d => !existingNames.has(d.name))
+          .map(day => ({
+            ...day,
+            id: generateId(),
+            exerciseIds: day.exerciseIds.map(id => templateIdMap.get(id) || id).filter(id => 
+              newData.templates.some(t => t.id === id)
+            ),
+          }));
+        
+        newData.trainingDays = [...data.trainingDays, ...newDays];
+        importedPrograms = newDays.length;
+      }
+    }
+    
+    return { 
+      success: true, 
+      data: newData,
+      imported: { templates: importedTemplates, programs: importedPrograms }
+    };
+  } catch (e) {
+    return { success: false, error: 'Ошибка при чтении файла' };
+  }
 };

@@ -54,6 +54,13 @@ import {
   WORKOUT_INTENSITIES,
   WORKOUT_FEELINGS,
   getTodayCaloriesStats,
+  exportTemplates,
+  exportPrograms,
+  exportAll,
+  exportBodyWeight,
+  importData,
+  isFirstLaunch,
+  completeOnboarding,
 } from './store';
 import { WorkoutIntensity } from './types';
 
@@ -210,6 +217,22 @@ const Icons = {
       <line x1="12" y1="15" x2="12" y2="3"/>
     </svg>
   ),
+  upload: (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+      <polyline points="17 8 12 3 7 8"/>
+      <line x1="12" y1="3" x2="12" y2="15"/>
+    </svg>
+  ),
+  fileJson: (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+      <polyline points="14 2 14 8 20 8"/>
+      <line x1="16" y1="13" x2="8" y2="13"/>
+      <line x1="16" y1="17" x2="8" y2="17"/>
+      <polyline points="10 9 9 9 8 9"/>
+    </svg>
+  ),
   running: (
     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="17" cy="4" r="2"/>
@@ -243,7 +266,7 @@ const Icons = {
   ),
 };
 
-type Screen = 'home' | 'workout' | 'exercise' | 'programs' | 'catalog' | 'stats' | 'weight' | 'addExercise' | 'editWorkout' | 'running' | 'activeRun' | 'settings' | 'finishWorkout';
+type Screen = 'home' | 'workout' | 'exercise' | 'programs' | 'catalog' | 'stats' | 'weight' | 'addExercise' | 'editWorkout' | 'running' | 'activeRun' | 'settings' | 'finishWorkout' | 'onboarding';
 
 // Confirm Modal Component
 interface ConfirmModalProps {
@@ -295,7 +318,31 @@ function ConfirmModal({ isOpen, title, message, confirmText = 'Да', cancelText
 
 export default function App() {
   const [data, setData] = useState<AppData>(loadData);
-  const [screen, setScreen] = useState<Screen>('home');
+  const [screen, setScreen] = useState<Screen>(() => {
+    // Check if onboarding is needed
+    if (isFirstLaunch() || !loadData().onboardingCompleted) {
+      return 'onboarding';
+    }
+    return 'home';
+  });
+  
+  // Onboarding state
+  const [onboardingStep, setOnboardingStep] = useState(0);
+  const [onboardingName, setOnboardingName] = useState('');
+  const [onboardingGender, setOnboardingGender] = useState<'male' | 'female' | ''>('');
+  const [onboardingBirthDate, setOnboardingBirthDate] = useState('');
+  const [onboardingHeight, setOnboardingHeight] = useState('');
+  const [onboardingWeight, setOnboardingWeight] = useState('');
+  
+  // iOS PWA install state
+  const [showIOSInstall, setShowIOSInstall] = useState(false);
+  
+  useEffect(() => {
+    // Check if iOS and not in standalone mode
+    if ((window as any).isIOSDevice && !(window as any).isIOSStandalone) {
+      setShowIOSInstall(true);
+    }
+  }, []);
   const [activeWorkoutId, setActiveWorkoutId] = useState<string | null>(null);
   const [activeExerciseId, setActiveExerciseId] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState<string | null>(null);
@@ -3295,7 +3342,68 @@ export default function App() {
     );
   };
 
-  // Settings Screen
+  // Settings Screen - Import/Export state
+  const [importMode, setImportMode] = useState<'add' | 'replace'>('add');
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importResult, setImportResult] = useState<{ success: boolean; message: string } | null>(null);
+  const fileInputRef = useCallback((node: HTMLInputElement | null) => {
+    if (node) {
+      node.value = '';
+    }
+  }, []);
+
+  const handleExport = (type: 'templates' | 'programs' | 'all') => {
+    let jsonData: string;
+    let filename: string;
+    
+    if (type === 'templates') {
+      jsonData = exportTemplates(data);
+      filename = `gym-exercises-${new Date().toISOString().split('T')[0]}.json`;
+    } else if (type === 'programs') {
+      jsonData = exportPrograms(data);
+      filename = `gym-programs-${new Date().toISOString().split('T')[0]}.json`;
+    } else {
+      jsonData = exportAll(data);
+      filename = `gym-backup-${new Date().toISOString().split('T')[0]}.json`;
+    }
+    
+    const blob = new Blob([jsonData], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const content = event.target?.result as string;
+      const result = importData(data, content, importMode);
+      
+      if (result.success && result.data) {
+        setData(result.data);
+        setImportResult({
+          success: true,
+          message: `Импортировано: ${result.imported?.templates || 0} упражнений, ${result.imported?.programs || 0} программ`
+        });
+      } else {
+        setImportResult({
+          success: false,
+          message: result.error || 'Ошибка импорта'
+        });
+      }
+      setShowImportModal(false);
+    };
+    reader.readAsText(file);
+  };
+
   const renderSettings = () => {
     const profile = data.userProfile;
     const currentWeight = getCurrentWeight(data);
@@ -3415,6 +3523,108 @@ export default function App() {
             </div>
           )}
 
+          {/* Export Section */}
+          <div className="rounded-2xl p-5" style={{ backgroundColor: theme.bg.dark, border: `1px solid ${theme.bg.medium}` }}>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: theme.accent + '30', color: theme.accent }}>
+                {Icons.download}
+              </div>
+              <h3 className="font-bold">Экспорт данных</h3>
+            </div>
+            <p className="text-gray-500 text-sm mb-4">Скачайте данные в формате JSON</p>
+            <div className="space-y-2">
+              <button
+                onClick={() => handleExport('templates')}
+                className="w-full py-3 rounded-xl font-semibold flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
+                style={{ backgroundColor: theme.bg.medium, border: `1px solid ${theme.bg.light}` }}
+              >
+                📋 Упражнения ({data.templates.length})
+              </button>
+              <button
+                onClick={() => handleExport('programs')}
+                className="w-full py-3 rounded-xl font-semibold flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
+                style={{ backgroundColor: theme.bg.medium, border: `1px solid ${theme.bg.light}` }}
+              >
+                📅 Программы ({data.trainingDays.length})
+              </button>
+              <button
+                onClick={() => handleExport('all')}
+                className="w-full py-3 rounded-xl font-semibold flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
+                style={{ backgroundColor: theme.accent }}
+              >
+                💾 Полный бэкап
+              </button>
+              <button
+                onClick={() => {
+                  const jsonData = exportBodyWeight(data);
+                  const filename = `gym-weight-${new Date().toISOString().split('T')[0]}.json`;
+                  const blob = new Blob([jsonData], { type: 'application/json' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = filename;
+                  document.body.appendChild(a);
+                  a.click();
+                  document.body.removeChild(a);
+                  URL.revokeObjectURL(url);
+                }}
+                className="w-full py-3 rounded-xl font-semibold flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
+                style={{ backgroundColor: theme.bg.medium, border: `1px solid ${theme.bg.light}` }}
+              >
+                ⚖️ Вес тела ({data.bodyWeight.length})
+              </button>
+            </div>
+          </div>
+
+          {/* Import Section */}
+          <div className="rounded-2xl p-5" style={{ backgroundColor: theme.bg.dark, border: `1px solid ${theme.bg.medium}` }}>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: '#22c55e30', color: '#22c55e' }}>
+                {Icons.upload}
+              </div>
+              <h3 className="font-bold">Импорт данных</h3>
+            </div>
+            <p className="text-gray-500 text-sm mb-4">Загрузите ранее экспортированный JSON файл</p>
+            <button
+              onClick={() => setShowImportModal(true)}
+              className="w-full py-3 rounded-xl font-semibold flex items-center justify-center gap-2 transition-all active:scale-[0.98] bg-green-600"
+            >
+              📥 Импортировать
+            </button>
+            
+            {importResult && (
+              <div className={`mt-3 p-3 rounded-xl text-sm ${importResult.success ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
+                {importResult.message}
+              </div>
+            )}
+          </div>
+
+          {/* iOS Install Instructions */}
+          {showIOSInstall && (
+            <div className="rounded-2xl p-5" style={{ backgroundColor: theme.bg.dark, border: `1px solid ${theme.bg.medium}` }}>
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center text-2xl" style={{ backgroundColor: '#007aff30' }}>
+                  📱
+                </div>
+                <h3 className="font-bold">Установить на iPhone</h3>
+              </div>
+              <p className="text-gray-400 text-sm mb-4">
+                Добавьте приложение на главный экран для быстрого доступа:
+              </p>
+              <ol className="text-gray-400 text-sm space-y-2 list-decimal list-inside">
+                <li>Нажмите кнопку <span className="text-white">Поделиться</span> (📤) в Safari</li>
+                <li>Прокрутите вниз и выберите <span className="text-white">"На экран Домой"</span></li>
+                <li>Нажмите <span className="text-white">"Добавить"</span></li>
+              </ol>
+              <button
+                onClick={() => setShowIOSInstall(false)}
+                className="mt-4 text-gray-500 text-sm"
+              >
+                Скрыть
+              </button>
+            </div>
+          )}
+
           {/* About */}
           <div className="rounded-2xl p-5" style={{ backgroundColor: theme.bg.dark, border: `1px solid ${theme.bg.medium}` }}>
             <h3 className="font-bold mb-2">О приложении</h3>
@@ -3422,6 +3632,68 @@ export default function App() {
             <p className="text-gray-500 text-sm">Ваш личный дневник тренировок</p>
           </div>
         </div>
+
+        {/* Import Modal */}
+        {showImportModal && (
+          <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-5">
+            <div className="rounded-3xl w-full max-w-sm overflow-hidden animate-scale-in" style={{ backgroundColor: theme.bg.dark }}>
+              <div className="p-5">
+                <h3 className="text-xl font-bold mb-4">Импорт данных</h3>
+                
+                <p className="text-gray-400 text-sm mb-4">Выберите способ импорта:</p>
+                
+                <div className="space-y-2 mb-5">
+                  <button
+                    onClick={() => setImportMode('add')}
+                    className="w-full p-4 rounded-xl text-left transition-all"
+                    style={{
+                      backgroundColor: importMode === 'add' ? theme.accent + '30' : theme.bg.medium,
+                      border: importMode === 'add' ? `2px solid ${theme.accent}` : `2px solid transparent`
+                    }}
+                  >
+                    <p className="font-bold">➕ Добавить к имеющимся</p>
+                    <p className="text-gray-400 text-sm mt-1">Новые данные будут добавлены, существующие не изменятся</p>
+                  </button>
+                  
+                  <button
+                    onClick={() => setImportMode('replace')}
+                    className="w-full p-4 rounded-xl text-left transition-all"
+                    style={{
+                      backgroundColor: importMode === 'replace' ? '#ef444430' : theme.bg.medium,
+                      border: importMode === 'replace' ? '2px solid #ef4444' : '2px solid transparent'
+                    }}
+                  >
+                    <p className="font-bold text-red-400">🔄 Заменить полностью</p>
+                    <p className="text-gray-400 text-sm mt-1">Текущие упражнения и программы будут заменены</p>
+                  </button>
+                </div>
+
+                <label className="block w-full py-4 rounded-xl font-semibold text-center cursor-pointer transition-all active:scale-[0.98]" style={{ backgroundColor: theme.accent }}>
+                  📁 Выбрать файл
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".json"
+                    onChange={handleImport}
+                    className="hidden"
+                  />
+                </label>
+              </div>
+              
+              <div className="flex" style={{ borderTop: `1px solid ${theme.bg.medium}` }}>
+                <button
+                  onClick={() => {
+                    setShowImportModal(false);
+                    setImportResult(null);
+                  }}
+                  className="flex-1 py-4 text-gray-400 font-semibold"
+                >
+                  Отмена
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   };
@@ -3563,6 +3835,179 @@ export default function App() {
     );
   };
 
+  // Onboarding Screen
+  const renderOnboarding = () => {
+    const handleCompleteOnboarding = () => {
+      // Save profile data
+      let newData = { ...data };
+      newData = updateUserProfile(newData, {
+        name: onboardingName,
+        gender: onboardingGender,
+        birthDate: onboardingBirthDate,
+        height: parseInt(onboardingHeight) || 0,
+      });
+      
+      // Add initial weight if provided
+      if (onboardingWeight) {
+        const weight = parseFloat(onboardingWeight);
+        if (!isNaN(weight) && weight > 0) {
+          newData = addBodyWeight(newData, weight);
+        }
+      }
+      
+      // Mark onboarding as completed
+      newData = completeOnboarding(newData);
+      setData(newData);
+      setScreen('home');
+    };
+    
+    const steps = [
+      // Step 0: Welcome
+      <div key="welcome" className="flex flex-col items-center justify-center min-h-screen px-8 text-center">
+        <div className="w-24 h-24 rounded-3xl flex items-center justify-center mb-8" style={{ background: `linear-gradient(135deg, ${theme.accent} 0%, ${theme.accentDark} 100%)` }}>
+          {Icons.dumbbell}
+        </div>
+        <h1 className="text-3xl font-bold mb-4">Добро пожаловать в<br/>GymTracker!</h1>
+        <p className="text-gray-400 mb-8 max-w-sm">
+          Ваш персональный дневник тренировок. Отслеживайте прогресс, записывайте упражнения и достигайте своих целей.
+        </p>
+        <button
+          onClick={() => setOnboardingStep(1)}
+          className="w-full max-w-xs py-4 rounded-2xl font-bold text-lg"
+          style={{ background: `linear-gradient(135deg, ${theme.accent} 0%, ${theme.accentDark} 100%)` }}
+        >
+          Начать
+        </button>
+      </div>,
+      
+      // Step 1: Profile
+      <div key="profile" className="min-h-screen px-6 py-12">
+        <div className="mb-8">
+          <button onClick={() => setOnboardingStep(0)} className="text-gray-400 flex items-center gap-2 mb-4">
+            {Icons.chevronLeft} Назад
+          </button>
+          <h1 className="text-2xl font-bold mb-2">Расскажите о себе</h1>
+          <p className="text-gray-400">Это поможет точнее рассчитывать калории</p>
+        </div>
+        
+        <div className="space-y-5">
+          <div>
+            <label className="text-gray-400 text-sm font-medium block mb-2">Ваше имя</label>
+            <input
+              type="text"
+              value={onboardingName}
+              onChange={(e) => setOnboardingName(e.target.value)}
+              placeholder="Как вас зовут?"
+              className="w-full rounded-xl px-4 py-4 outline-none text-lg"
+              style={{ backgroundColor: theme.bg.dark, border: `1px solid ${theme.bg.light}` }}
+            />
+          </div>
+          
+          <div>
+            <label className="text-gray-400 text-sm font-medium block mb-2">Пол</label>
+            <div className="grid grid-cols-2 gap-3">
+              {[
+                { id: 'male', label: '👨 Мужской' },
+                { id: 'female', label: '👩 Женский' },
+              ].map(g => (
+                <button
+                  key={g.id}
+                  onClick={() => setOnboardingGender(g.id as 'male' | 'female')}
+                  className="py-4 rounded-xl font-semibold transition-all text-lg"
+                  style={{
+                    backgroundColor: onboardingGender === g.id ? theme.accent : theme.bg.dark,
+                    border: `1px solid ${onboardingGender === g.id ? theme.accent : theme.bg.light}`
+                  }}
+                >
+                  {g.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          
+          <div>
+            <label className="text-gray-400 text-sm font-medium block mb-2">Дата рождения</label>
+            <input
+              type="date"
+              value={onboardingBirthDate}
+              onChange={(e) => setOnboardingBirthDate(e.target.value)}
+              className="w-full rounded-xl px-4 py-4 outline-none text-lg"
+              style={{ backgroundColor: theme.bg.dark, border: `1px solid ${theme.bg.light}` }}
+            />
+          </div>
+        </div>
+        
+        <button
+          onClick={() => setOnboardingStep(2)}
+          className="w-full py-4 rounded-2xl font-bold text-lg mt-8"
+          style={{ background: `linear-gradient(135deg, ${theme.accent} 0%, ${theme.accentDark} 100%)` }}
+        >
+          Далее
+        </button>
+      </div>,
+      
+      // Step 2: Body metrics
+      <div key="metrics" className="min-h-screen px-6 py-12">
+        <div className="mb-8">
+          <button onClick={() => setOnboardingStep(1)} className="text-gray-400 flex items-center gap-2 mb-4">
+            {Icons.chevronLeft} Назад
+          </button>
+          <h1 className="text-2xl font-bold mb-2">Ваши параметры</h1>
+          <p className="text-gray-400">Используются для расчёта калорий и ИМТ</p>
+        </div>
+        
+        <div className="space-y-5">
+          <div>
+            <label className="text-gray-400 text-sm font-medium block mb-2">Рост (см)</label>
+            <input
+              type="number"
+              inputMode="numeric"
+              value={onboardingHeight}
+              onChange={(e) => setOnboardingHeight(e.target.value)}
+              placeholder="170"
+              className="w-full rounded-xl px-4 py-4 outline-none text-lg"
+              style={{ backgroundColor: theme.bg.dark, border: `1px solid ${theme.bg.light}` }}
+            />
+          </div>
+          
+          <div>
+            <label className="text-gray-400 text-sm font-medium block mb-2">Текущий вес (кг)</label>
+            <input
+              type="number"
+              inputMode="decimal"
+              step="0.1"
+              value={onboardingWeight}
+              onChange={(e) => setOnboardingWeight(e.target.value)}
+              placeholder="70.0"
+              className="w-full rounded-xl px-4 py-4 outline-none text-lg"
+              style={{ backgroundColor: theme.bg.dark, border: `1px solid ${theme.bg.light}` }}
+            />
+          </div>
+        </div>
+        
+        <button
+          onClick={handleCompleteOnboarding}
+          className="w-full py-4 rounded-2xl font-bold text-lg mt-8 bg-green-600"
+        >
+          Готово! Начать тренироваться
+        </button>
+        
+        <button
+          onClick={handleCompleteOnboarding}
+          className="w-full py-3 text-gray-500 font-medium mt-4"
+        >
+          Пропустить
+        </button>
+      </div>,
+    ];
+    
+    return (
+      <div className="min-h-screen text-white" style={{ backgroundColor: theme.bg.darkest }}>
+        {steps[onboardingStep]}
+      </div>
+    );
+  };
+
   // Stats Screen
   const renderStats = () => {
     const completedWorkouts = data.workouts.filter(w => w.completed);
@@ -3670,6 +4115,7 @@ export default function App() {
 
   return (
     <div className="font-sans antialiased">
+      {screen === 'onboarding' && renderOnboarding()}
       {screen === 'home' && renderHome()}
       {screen === 'workout' && renderWorkout()}
       {screen === 'exercise' && renderExercise()}

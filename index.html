@@ -3,25 +3,71 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/icon.svg" />
-    <link rel="apple-touch-icon" href="/icon.svg" />
+    <!-- iOS PWA Icons -->
+    <link rel="apple-touch-icon" href="/icon-180.png" />
+    <link rel="apple-touch-icon" sizes="152x152" href="/icon-152.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/icon-180.png" />
+    <link rel="apple-touch-icon" sizes="167x167" href="/icon-167.png" />
+    <!-- Manifest -->
     <link rel="manifest" href="/manifest.json" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <meta name="theme-color" content="#6366f1" />
+    <!-- iOS PWA Meta Tags -->
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="FitTracker" />
-    <meta name="application-name" content="FitTracker" />
+    <meta name="apple-mobile-web-app-title" content="GymTracker" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <!-- App Info -->
+    <meta name="application-name" content="GymTracker" />
     <meta name="description" content="Отслеживание тренировок, упражнений и веса тела" />
-    <title>FitTracker — Фитнес Трекер</title>
+    <!-- iOS Splash Screens -->
+    <meta name="apple-touch-fullscreen" content="yes" />
+    <title>GymTracker — Фитнес Трекер</title>
     <style>
       * { -webkit-tap-highlight-color: transparent; }
-      body { background: #000; }
+      body { background: #0a0a0b; margin: 0; padding: 0; }
+      /* iOS PWA Splash Screen Style */
+      #splash {
+        position: fixed;
+        inset: 0;
+        background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+        transition: opacity 0.3s ease;
+      }
+      #splash.hide { opacity: 0; pointer-events: none; }
+      #splash svg { width: 80px; height: 80px; color: white; }
+      #splash h1 { color: white; font-family: system-ui, -apple-system, sans-serif; font-size: 24px; margin-top: 20px; }
     </style>
   </head>
   <body>
+    <!-- Splash Screen for iOS PWA -->
+    <div id="splash">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M6.5 6.5a2.5 2.5 0 0 1 3.5 0L17 13.5a2.5 2.5 0 0 1 0 3.5 2.5 2.5 0 0 1-3.5 0L6.5 10a2.5 2.5 0 0 1 0-3.5z"/>
+        <path d="M3.5 9.5L5 8l1.5 1.5"/>
+        <path d="M18.5 14.5L20 16l-1.5 1.5"/>
+      </svg>
+      <h1>GymTracker</h1>
+    </div>
+    
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
     <script>
+      // Hide splash screen when app is loaded
+      window.addEventListener('load', () => {
+        setTimeout(() => {
+          const splash = document.getElementById('splash');
+          if (splash) {
+            splash.classList.add('hide');
+            setTimeout(() => splash.remove(), 300);
+          }
+        }, 500);
+      });
+      
       // Регистрация Service Worker для PWA
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
@@ -45,6 +91,19 @@
         window.deferredPrompt = null;
         window.dispatchEvent(new Event('pwainstalled'));
       });
+      
+      // Detect iOS and show install instructions
+      function isIOS() {
+        return /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+      }
+      
+      function isInStandaloneMode() {
+        return ('standalone' in window.navigator) && (window.navigator.standalone);
+      }
+      
+      // Expose iOS detection to the app
+      window.isIOSDevice = isIOS();
+      window.isIOSStandalone = isInStandaloneMode();
     </script>
   </body>
 </html>

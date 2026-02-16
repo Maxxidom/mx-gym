@@ -129,4 +129,5 @@ export interface AppData {
   bodyWeight: BodyWeightEntry[];
   runSessions: RunSession[];
   userProfile: UserProfile;
+  onboardingCompleted?: boolean;
 }

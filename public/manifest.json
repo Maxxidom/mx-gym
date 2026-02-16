@@ -1,9 +1,10 @@
 {
-  "name": "FitTracker - Фитнес Трекер",
-  "short_name": "FitTracker",
+  "name": "GymTracker - Фитнес Трекер",
+  "short_name": "GymTracker",
   "description": "Отслеживание тренировок, упражнений и веса",
-  "start_url": "/",
-  "scope": "/",
+  "start_url": "./",
+  "scope": "./",
+  "id": "/",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#0a0a0b",
@@ -11,11 +12,24 @@
   "categories": ["fitness", "health", "lifestyle"],
   "lang": "ru",
   "dir": "ltr",
+  "prefer_related_applications": false,
   "icons": [
     {
-      "src": "/icon.svg",
+      "src": "./icon.svg",
       "sizes": "any",
       "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "./icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "./icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
       "purpose": "any maskable"
     }
   ],
@@ -24,14 +38,8 @@
     {
       "name": "Начать тренировку",
       "short_name": "Тренировка",
-      "url": "/?action=workout",
-      "icons": [{"src": "/icon-192.png", "sizes": "192x192"}]
-    },
-    {
-      "name": "Добавить вес",
-      "short_name": "Вес",
-      "url": "/?action=weight",
-      "icons": [{"src": "/icon-192.png", "sizes": "192x192"}]
+      "url": "./",
+      "icons": [{"src": "./icon-192.png", "sizes": "192x192"}]
     }
   ]
 }
